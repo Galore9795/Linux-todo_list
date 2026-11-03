@@ -39,6 +39,8 @@ def main():
     write.add_argument('--calendar-id')
     write.add_argument('--event-id')
     sub.add_parser('export')
+    archive = sub.add_parser('export-archive', help='export notes and source files as a ZIP backup')
+    archive.add_argument('path')
     args = parser.parse_args()
     db = store.connect()
     if args.command == 'new':
@@ -52,6 +54,9 @@ def main():
         for note in notes:
             note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=?' + ('' if args.command == 'export' or args.all else ' AND deleted=0') + ' ORDER BY id', (note['id'],))]
         print(json.dumps(notes, ensure_ascii=False, indent=2))
+    elif args.command == 'export-archive':
+        from .backup import export_archive
+        export_archive(db, args.path)
     elif args.command == 'update':
         fields = {k: v for k, v in vars(args).items() if k in ('title', 'body', 'deleted', 'reminder_at', 'start_at', 'end_at', 'due_at') and v is not None}
         store.update(db, args.id, **fields)

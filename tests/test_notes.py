@@ -1,4 +1,6 @@
 import os
+import json
+import zipfile
 import subprocess
 import sys
 import tempfile
@@ -7,6 +9,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from todo_notes import store
+from todo_notes.backup import export_archive
 
 
 class NotesTest(unittest.TestCase):
@@ -32,6 +35,25 @@ class NotesTest(unittest.TestCase):
         row = self.db.execute('SELECT * FROM notes WHERE id=?', (note,)).fetchone()
         self.assertEqual((row['source'], row['x'], row['pinned'], row['deleted']), ('original', 10, 1, 0))
         self.assertEqual(self.db.execute('SELECT done FROM items WHERE id=?', (item,)).fetchone()[0], 1)
+
+    def test_archive_contains_deleted_notes_drafts_and_sources(self):
+        original = Path(self.tmp.name) / 'source.png'
+        original.write_bytes(b'image bytes')
+        note = store.create(self.db, 'private title', source_file=original)
+        store.update(self.db, note, item_draft='draft', deleted=1)
+        archive = Path(self.tmp.name) / 'backup.zip'
+        export_archive(self.db, archive)
+        with zipfile.ZipFile(archive) as z:
+            data = json.loads(z.read('notes.json'))
+            saved = data['notes'][0]
+            self.assertEqual((saved['title'], saved['item_draft'], saved['deleted']), ('private title', 'draft', 1))
+            self.assertEqual(z.read(saved['source_file']), b'image bytes')
+            self.assertFalse(saved['source_file'].startswith('/'))
+        self.assertEqual(archive.stat().st_mode & 0o777, 0o600)
+        db_path = Path(self.db.execute('PRAGMA database_list').fetchone()[2])
+        with self.assertRaises(ValueError):
+            export_archive(self.db, db_path)
+        self.assertEqual(self.db.execute('SELECT title FROM notes').fetchone()[0], 'private title')
 
     def test_conditional_update_does_not_overwrite_other_writer(self):
         note = store.create(self.db, 'original')

@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog
 from . import store
 
 
@@ -93,7 +93,7 @@ class Note(QWidget):
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
         self.update_calendar_status(row)
-        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('时间', self.edit_schedule), ('删除项目', self.delete_item), ('撤销', self.undo_item), ('恢复', self.restore), ('删除', self.delete)]
+        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('时间', self.edit_schedule), ('删除项目', self.delete_item), ('撤销', self.undo_item), ('恢复', self.restore), ('删除', self.delete), ('导出', self.export_backup)]
         self.secondary_bars = []
         for group in (actions[:3], actions[3:6], actions[6:]):
             container = QWidget()
@@ -162,6 +162,18 @@ class Note(QWidget):
             item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked)
             self.items.addItem(item)
         self.items.blockSignals(False)
+
+    def export_backup(self):
+        from .backup import export_archive
+        path, _ = QFileDialog.getSaveFileName(self, '导出便签备份', 'linux-todo-notes.zip', 'ZIP 备份 (*.zip)')
+        if not path:
+            return
+        try:
+            export_archive(self.manager.db, path)
+        except (OSError, ValueError) as error:
+            self.calendar_status.setText('导出失败：' + str(error))
+        else:
+            self.calendar_status.setText('备份已导出：' + path)
 
     def edit_schedule(self):
         dialog = ScheduleDialog(self.manager.db, self.id, self)
