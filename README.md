@@ -49,7 +49,7 @@
 
 ## 跨项目使用
 
-运行 `scripts/install-local.sh`，安装 `~/.local/bin/linux-todo-notes` 和用户级 Codex skill。确保 `~/.local/bin` 在 PATH 中；新启动的本地 Codex 会话可发现该 skill。安装入口引用当前仓库位置，移动仓库后需删除这两个入口并重新安装。命令行可在任意目录运行；当前已通过独立临时数据目录的跨目录调用检查，尚未验证另一个 Codex 会话实际自动调用。
+运行 `scripts/install-local.sh`，安装 `~/.local/bin/linux-todo-notes` 和用户级 Codex skill。确保 `~/.local/bin` 在 PATH 中；新启动的本地 Codex 会话可发现该 skill。安装入口引用当前仓库位置，移动仓库后需删除这两个入口并重新安装。命令行可在任意目录运行；当前已通过独立临时数据目录的跨目录调用检查，已验证另一个本地 Codex 会话在不显式点名 skill 时发现并调用它。
 
 时间与日历记录：`update ID --reminder-at ISO时间 --start-at ISO时间 --end-at ISO时间 --due-at ISO时间` 分别保存提醒、执行开始和结束、截止时间，时间须带时区偏移，空字符串可清除。便签显示这些时间、上次核对时间及写入状态。`calendar-check ID success|failed` 和 `calendar-write ID success|failed` 只记录实际日历操作的结果，不会访问日历；成功写入时须提供 `--calendar-id` 和 `--event-id`。失败保留已有事件关联和上次成功核对时间。聊天端日历实际读写流程仍需验证。
 
