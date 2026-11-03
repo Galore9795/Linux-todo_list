@@ -237,6 +237,7 @@ class Note(QWidget):
         for item_id, text, done in desired:
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, item_id)
+            item.setData(Qt.ItemDataRole.UserRole + 1, (text, int(done), 0))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked)
             self.items.addItem(item)
@@ -268,23 +269,54 @@ class Note(QWidget):
         row = self.manager.db.execute('SELECT text, done, deleted FROM items WHERE id=?', (item_id,)).fetchone()
         return tuple(row) if row else None
 
+    def item_error(self, message):
+        self.manager.db.rollback()
+        self.save_status.setText(message)
+
+    def item_success(self):
+        if not self.pending_fields:
+            self.save_status.setText('文字和草稿：已保存')
+
     def item_changed(self, item):
         item_id = item.data(Qt.ItemDataRole.UserRole)
-        before = self.item_state(item_id)
-        if before is None:
+        before = tuple(item.data(Qt.ItemDataRole.UserRole + 1))
+        after = (item.text(), int(item.checkState() == Qt.CheckState.Checked), 0)
+        if before == after:
             return
-        after = (item.text(), int(item.checkState() == Qt.CheckState.Checked), before[2])
-        if before != after:
-            store.update_item(self.manager.db, item_id, text=after[0], done=after[1])
+        try:
+            saved = store.undo_item_change(self.manager.db, item_id, after, before)
+        except sqlite3.Error:
+            saved = False
+            self.item_error('清单保存失败，请重试')
+        else:
+            if not saved:
+                self.item_error('清单已在其他入口修改，请重新操作')
+        if saved:
+            self.items.blockSignals(True)
+            item.setData(Qt.ItemDataRole.UserRole + 1, after)
+            self.items.blockSignals(False)
             self.item_history.append((item_id, before, after))
+            self.item_success()
+        else:
+            self.items.blockSignals(True)
+            item.setText(before[0])
+            item.setCheckState(Qt.CheckState.Checked if before[1] else Qt.CheckState.Unchecked)
+            self.items.blockSignals(False)
 
     def undo_item(self):
         if not self.item_history:
             return
-        item_id, before, after = self.item_history.pop()
-        if not store.undo_item_change(self.manager.db, item_id, before, after):
-            self.calendar_status.setText('该项目已在其他入口修改，未撤销')
-            QTimer.singleShot(4000, self.manager.refresh)
+        item_id, before, after = self.item_history[-1]
+        try:
+            saved = store.undo_item_change(self.manager.db, item_id, before, after)
+        except sqlite3.Error:
+            self.item_error('撤销失败，请重试')
+            return
+        self.item_history.pop()
+        if not saved:
+            self.item_error('该项目已在其他入口修改，未撤销')
+        else:
+            self.item_success()
         self.sync_items()
 
     def add_item(self):
@@ -293,9 +325,13 @@ class Note(QWidget):
             try:
                 item_id = store.submit_item_draft(self.manager.db, self.id, self.item_input.text())
             except ValueError:
-                self.calendar_status.setText('草稿已在其他入口修改，请先检查')
+                self.save_status.setText('草稿已在其他入口修改，请先检查')
+                return
+            except sqlite3.Error:
+                self.item_error('清单保存失败，草稿仍保留')
                 return
             self.item_history.append((item_id, (text, 0, 1), (text, 0, 0)))
+            self.item_success()
             self.item_input.blockSignals(True)
             self.item_input.clear()
             self.item_input.blockSignals(False)
@@ -305,10 +341,18 @@ class Note(QWidget):
         item = self.items.currentItem()
         if item:
             item_id = item.data(Qt.ItemDataRole.UserRole)
-            before = self.item_state(item_id)
-            if before:
-                store.delete_item(self.manager.db, item_id)
-                self.item_history.append((item_id, before, (before[0], before[1], 1)))
+            before = tuple(item.data(Qt.ItemDataRole.UserRole + 1))
+            after = (before[0], before[1], 1)
+            try:
+                saved = store.undo_item_change(self.manager.db, item_id, after, before)
+            except sqlite3.Error:
+                self.item_error('删除失败，请重试')
+                return
+            if saved:
+                self.item_history.append((item_id, before, after))
+                self.item_success()
+            else:
+                self.item_error('清单已在其他入口修改，未删除')
             self.sync_items()
 
     def restore(self):
@@ -416,7 +460,13 @@ class Manager:
                 window.ensure_visible()
         for window in self.windows.values():
             window.flush_pending()
-        rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0')}
+        try:
+            rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0')}
+        except sqlite3.Error:
+            self.db.rollback()
+            for window in self.windows.values():
+                window.save_status.setText('读取失败，正在重试')
+            return
         for note_id in set(self.windows) - set(rows):
             self.windows.pop(note_id).close()
         for note_id, row in rows.items():

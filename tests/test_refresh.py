@@ -154,6 +154,53 @@ class RefreshTest(unittest.TestCase):
             self.assertEqual(db.execute('SELECT start_at FROM notes WHERE id=?', (note,)).fetchone()[0], '2026-11-05T13:00:00+08:00')
             db.close()
 
+    def test_stale_checkbox_does_not_overwrite_external_text(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note = store.create(db, 'test')
+            item_id = store.add_item(db, note, 'old')
+            manager = Manager(db)
+            window = manager.windows[note]
+            store.update_item(db, item_id, text='changed externally')
+            window.items.item(0).setCheckState(Qt.CheckState.Checked)
+            row = db.execute('SELECT text, done FROM items WHERE id=?', (item_id,)).fetchone()
+            self.assertEqual(tuple(row), ('changed externally', 0))
+            self.assertIn('其他入口', window.save_status.text())
+            manager.refresh()
+            self.assertEqual(window.items.item(0).text(), 'changed externally')
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
+    def test_checklist_save_failure_preserves_draft_and_reverts_checkbox(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, 'test')
+            item_id = store.add_item(db, note_id, 'existing')
+            manager = Manager(db)
+            window = manager.windows[note_id]
+            item = window.items.item(0)
+            with patch('todo_notes.gui.store.undo_item_change', side_effect=sqlite3.OperationalError('disk unavailable')):
+                item.setCheckState(Qt.CheckState.Checked)
+                self.assertEqual(item.checkState(), Qt.CheckState.Unchecked)
+                self.assertIn('保存失败', window.save_status.text())
+            self.assertEqual(db.execute('SELECT done FROM items WHERE id=?', (item_id,)).fetchone()[0], 0)
+            window.item_input.setText('draft')
+            with patch('todo_notes.gui.store.submit_item_draft', side_effect=sqlite3.OperationalError('disk unavailable')):
+                window.add_item()
+                self.assertEqual(window.item_input.text(), 'draft')
+                self.assertIn('草稿仍保留', window.save_status.text())
+            self.assertEqual(db.execute('SELECT item_draft FROM notes WHERE id=?', (note_id,)).fetchone()[0], 'draft')
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
     def test_checklist_undo_and_external_change(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
@@ -175,7 +222,7 @@ class RefreshTest(unittest.TestCase):
             store.update_item(db, item_id, text='external')
             window.undo_item()
             self.assertEqual(tuple(db.execute('SELECT text, deleted FROM items WHERE id=?', (item_id,)).fetchone()), ('external', 0))
-            self.assertIn('其他入口', window.calendar_status.text())
+            self.assertIn('其他入口', window.save_status.text())
             manager.timer.stop()
             manager.watcher.removePaths(manager.watcher.files())
             window.close()
