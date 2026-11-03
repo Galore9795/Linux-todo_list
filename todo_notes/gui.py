@@ -6,6 +6,17 @@ from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLi
 from . import store
 
 
+def display_time(value):
+    from datetime import datetime
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.utcoffset() is None:
+            return value
+        return parsed.astimezone().strftime('%Y-%m-%d %H:%M %Z')
+    except ValueError:
+        return value
+
+
 def visible_position(x, y, width, areas):
     """Keep enough of the title bar reachable on at least one available screen."""
     if not areas:
@@ -212,12 +223,14 @@ class Note(QWidget):
     def update_calendar_status(self, row):
         parts = []
         if row['start_at']:
-            parts.append('执行：' + row['start_at'] + (' → ' + row['end_at'] if row['end_at'] else ''))
+            parts.append('执行：' + display_time(row['start_at']) + (' → ' + display_time(row['end_at']) if row['end_at'] else ''))
+        elif row['end_at']:
+            parts.append('执行结束：' + display_time(row['end_at']))
         if row['reminder_at']:
-            parts.append('提醒：' + row['reminder_at'])
+            parts.append('提醒：' + display_time(row['reminder_at']))
         if row['due_at']:
-            parts.append('截止：' + row['due_at'])
-        status = row['calendar_checked_at'] or '尚未核对日历'
+            parts.append('截止：' + display_time(row['due_at']))
+        status = display_time(row['calendar_checked_at']) if row['calendar_checked_at'] else '尚未核对日历'
         if row['calendar_check_status'] == 'failed':
             status += '（上次核对失败）'
         parts.append('日历核对：' + status)

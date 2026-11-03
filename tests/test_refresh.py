@@ -137,6 +137,28 @@ class RefreshTest(unittest.TestCase):
             window.close()
             db.close()
 
+    def test_times_display_in_local_timezone_and_show_end_without_start(self):
+        from datetime import datetime
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, 'test')
+            store.update(db, note_id, end_at='2026-11-05T10:00:00+00:00')
+            manager = Manager(db)
+            window = manager.windows[note_id]
+            expected = datetime.fromisoformat('2026-11-05T10:00:00+00:00').astimezone().strftime('%Y-%m-%d %H:%M %Z')
+            self.assertIn('执行结束：' + expected, window.calendar_status.text())
+            store.record_calendar_check(db, note_id, success=True)
+            row = db.execute('SELECT calendar_checked_at FROM notes WHERE id=?', (note_id,)).fetchone()
+            manager.refresh()
+            checked = datetime.fromisoformat(row['calendar_checked_at']).astimezone().strftime('%Y-%m-%d %H:%M %Z')
+            self.assertIn(checked, window.calendar_status.text())
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
     def test_source_dialog_shows_text_and_opens_saved_image(self):
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
