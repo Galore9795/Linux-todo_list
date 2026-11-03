@@ -418,7 +418,15 @@ class Note(QWidget):
         self.loading = False
 
     def delete(self):
-        store.update(self.manager.db, self.id, deleted=1)
+        self.flush_pending()
+        if self.pending_fields:
+            self.save_status.setText('有未保存的文字，保存成功后才能删除')
+            return
+        try:
+            store.update(self.manager.db, self.id, deleted=1)
+        except (sqlite3.Error, ValueError):
+            self.item_error('删除便签失败，请重试')
+            return
         if not self.manager.db.execute('SELECT 1 FROM notes WHERE deleted=0').fetchone():
             store.create(self.manager.db)
         self.manager.refresh()

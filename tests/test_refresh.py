@@ -57,6 +57,57 @@ class RefreshTest(unittest.TestCase):
             window.close()
             db.close()
 
+    def test_delete_waits_for_pending_text_to_save(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            window = next(iter(manager.windows.values()))
+            with patch('todo_notes.gui.store.update', side_effect=sqlite3.OperationalError('disk unavailable')):
+                window.title.setText('pending')
+                window.delete()
+                self.assertIn(window.id, manager.windows)
+                self.assertIn('未保存', window.save_status.text())
+            window.delete()
+            row = db.execute('SELECT title, deleted FROM notes WHERE id=?', (window.id,)).fetchone()
+            self.assertEqual(tuple(row), ('pending', 1))
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for other in manager.windows.values():
+                other.close()
+            db.close()
+
+    def test_delete_last_note_and_restore_from_blank_note(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '重要便签', '原内容')
+            item_id = store.add_item(db, note_id, '已完成的项目')
+            store.update_item(db, item_id, done=True)
+            manager = Manager(db)
+            original = manager.windows[note_id]
+            original.delete()
+            self.assertNotIn(note_id, manager.windows)
+            self.assertEqual(len(manager.windows), 1)
+            blank = next(iter(manager.windows.values()))
+            with patch('todo_notes.gui.QInputDialog.getItem', return_value=(f'便签 #{note_id}: 重要便签', True)):
+                blank.restore()
+            self.assertIn(note_id, manager.windows)
+            restored = manager.windows[note_id]
+            self.assertEqual(restored.body.toPlainText(), '原内容')
+            self.assertEqual(restored.items.item(0).checkState(), Qt.CheckState.Checked)
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+            db = store.connect()
+            self.assertEqual(db.execute('SELECT deleted FROM notes WHERE id=?', (note_id,)).fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT done FROM items WHERE id=?', (item_id,)).fetchone()[0], 1)
+            db.close()
+
     def test_item_draft_survives_restart_and_submission_is_atomic(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
