@@ -33,6 +33,20 @@ class NotesTest(unittest.TestCase):
         self.assertEqual((row['source'], row['x'], row['pinned'], row['deleted']), ('original', 10, 1, 0))
         self.assertEqual(self.db.execute('SELECT done FROM items WHERE id=?', (item,)).fetchone()[0], 1)
 
+    def test_changing_linked_schedule_marks_calendar_pending(self):
+        note = store.create(self.db, 'scheduled')
+        store.update(self.db, note, start_at='2026-11-05T10:00:00+08:00')
+        store.record_calendar_write(self.db, note, success=True, calendar_id='cal', event_id='evt')
+        store.record_calendar_check(self.db, note, success=True)
+        before = self.db.execute('SELECT calendar_checked_at FROM notes WHERE id=?', (note,)).fetchone()[0]
+        store.update(self.db, note, title='new title', start_at='2026-11-05T10:00:00+08:00')
+        self.assertEqual(self.db.execute('SELECT calendar_write_status FROM notes WHERE id=?', (note,)).fetchone()[0], 'success')
+        store.update(self.db, note, start_at='2026-11-05T11:00:00+08:00')
+        row = self.db.execute('SELECT * FROM notes WHERE id=?', (note,)).fetchone()
+        self.assertEqual((row['calendar_write_status'], row['event_id'], row['calendar_checked_at']), ('pending', 'evt', before))
+        store.record_calendar_write(self.db, note, success=True, calendar_id='cal', event_id='evt')
+        self.assertEqual(self.db.execute('SELECT calendar_write_status FROM notes WHERE id=?', (note,)).fetchone()[0], 'success')
+
     def test_item_deletion_survives_restart_and_can_be_restored(self):
         note = store.create(self.db, 'title')
         item = store.add_item(self.db, note, 'keep me')

@@ -74,7 +74,14 @@ def update(db, note_id, **fields):
             parsed = datetime.fromisoformat(fields[name])
             if parsed.utcoffset() is None:
                 raise ValueError(f'{name} requires a timezone offset')
-    cursor = db.execute('UPDATE notes SET ' + ', '.join(k + '=?' for k in fields) + ' WHERE id=?', (*fields.values(), note_id))
+    assignments = [k + '=?' for k in fields]
+    params = list(fields.values())
+    schedule_changes = [k for k in ('start_at', 'end_at') if k in fields]
+    if schedule_changes:
+        comparisons = ' OR '.join(f"COALESCE({key}, '') != COALESCE(?, '')" for key in schedule_changes)
+        assignments.append("calendar_write_status=CASE WHEN event_id IS NOT NULL AND event_id != '' AND (" + comparisons + ") THEN 'pending' ELSE calendar_write_status END")
+        params.extend(fields[key] for key in schedule_changes)
+    cursor = db.execute('UPDATE notes SET ' + ', '.join(assignments) + ' WHERE id=?', (*params, note_id))
     if cursor.rowcount != 1:
         raise ValueError('note not found')
     db.commit()
