@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel
 from . import store
 
 
@@ -24,6 +24,10 @@ class Note(QWidget):
         self.item_input.setPlaceholderText('输入清单项目，按回车添加')
         self.item_input.returnPressed.connect(self.add_item)
         layout.addWidget(self.item_input)
+        self.calendar_status = QLabel()
+        self.calendar_status.setWordWrap(True)
+        layout.addWidget(self.calendar_status)
+        self.update_calendar_status(row)
         bar = QHBoxLayout()
         for label, callback in [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]:
             button = QPushButton(label)
@@ -39,9 +43,26 @@ class Note(QWidget):
         self.body.setVisible(not row['collapsed'])
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
+        self.calendar_status.setVisible(not row['collapsed'])
         self.sync_items()
         self.loading = False
         self.show()
+
+    def update_calendar_status(self, row):
+        parts = []
+        if row['start_at']:
+            parts.append('执行：' + row['start_at'] + (' → ' + row['end_at'] if row['end_at'] else ''))
+        if row['reminder_at']:
+            parts.append('提醒：' + row['reminder_at'])
+        if row['due_at']:
+            parts.append('截止：' + row['due_at'])
+        status = row['calendar_checked_at'] or '尚未核对日历'
+        if row['calendar_check_status'] == 'failed':
+            status += '（上次核对失败）'
+        parts.append('日历核对：' + status)
+        if row['calendar_write_status'] != 'not_scheduled':
+            parts.append('日历写入：' + ('成功' if row['calendar_write_status'] == 'success' else '失败'))
+        self.calendar_status.setText('\n'.join(parts))
 
     def sync_items(self):
         rows = self.manager.db.execute('SELECT * FROM items WHERE note_id=? AND deleted=0 ORDER BY id', (self.id,)).fetchall()
@@ -117,6 +138,7 @@ class Note(QWidget):
         self.body.setVisible(visible)
         self.items.setVisible(visible)
         self.item_input.setVisible(visible)
+        self.calendar_status.setVisible(visible)
         store.update(self.manager.db, self.id, collapsed=int(not visible))
         self.adjustSize()
 
@@ -147,6 +169,7 @@ class Manager:
             else:
                 window = self.windows[note_id]
                 window.sync_items()
+                window.update_calendar_status(row)
                 if not window.title.hasFocus() and window.title.text() != row['title']:
                     window.title.blockSignals(True)
                     window.title.setText(row['title'])

@@ -44,6 +44,21 @@ class NotesTest(unittest.TestCase):
         row = self.db.execute('SELECT text, done, deleted FROM items WHERE id=?', (item,)).fetchone()
         self.assertEqual(tuple(row), ('keep me', 1, 0))
 
+    def test_calendar_status_preserves_verified_time_and_event_on_failure(self):
+        note = store.create(self.db, 'calendar test')
+        store.update(self.db, note, reminder_at='2026-11-05T10:00:00+08:00', due_at='2026-11-06T12:00:00+08:00')
+        with self.assertRaises(ValueError):
+            store.update(self.db, note, start_at='2026-11-05T10:00:00')
+        store.record_calendar_check(self.db, note, success=True)
+        store.record_calendar_write(self.db, note, success=True, calendar_id='calendar', event_id='event')
+        before = self.db.execute('SELECT calendar_checked_at FROM notes WHERE id=?', (note,)).fetchone()[0]
+        store.record_calendar_check(self.db, note, success=False)
+        store.record_calendar_write(self.db, note, success=False)
+        row = self.db.execute('SELECT * FROM notes WHERE id=?', (note,)).fetchone()
+        self.assertEqual((row['calendar_checked_at'], row['event_id'], row['calendar_check_status'], row['calendar_write_status']), (before, 'event', 'failed', 'failed'))
+        with self.assertRaises(ValueError):
+            store.record_calendar_write(self.db, note, success=True)
+
     def test_other_process_updates_shared_data(self):
         note = store.create(self.db, 'title')
         subprocess.run([sys.executable, '-m', 'todo_notes', 'item-add', str(note), 'external'], check=True, capture_output=True)

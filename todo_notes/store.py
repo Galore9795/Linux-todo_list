@@ -12,6 +12,13 @@ def connect():
     db.execute('CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, note_id INTEGER NOT NULL REFERENCES notes(id), text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0)')
     if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(items)')}:
         db.execute('ALTER TABLE items ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
+    columns = {row['name'] for row in db.execute('PRAGMA table_info(notes)')}
+    for name in ('reminder_at', 'start_at', 'end_at', 'due_at', 'calendar_id', 'event_id', 'calendar_checked_at'):
+        if name not in columns:
+            db.execute(f'ALTER TABLE notes ADD COLUMN {name} TEXT')
+    for name, default in (('calendar_write_status', 'not_scheduled'), ('calendar_check_status', 'never')):
+        if name not in columns:
+            db.execute(f"ALTER TABLE notes ADD COLUMN {name} TEXT NOT NULL DEFAULT '{default}'")
     db.commit()
     return db
 
@@ -25,9 +32,15 @@ def create(db, title='', body='', source=''):
 
 
 def update(db, note_id, **fields):
-    allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source'}
+    allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at'}
     if not fields or not fields.keys() <= allowed:
         raise ValueError('invalid fields')
+    from datetime import datetime
+    for name in ('reminder_at', 'start_at', 'end_at', 'due_at'):
+        if name in fields and fields[name]:
+            parsed = datetime.fromisoformat(fields[name])
+            if parsed.utcoffset() is None:
+                raise ValueError(f'{name} requires a timezone offset')
     cursor = db.execute('UPDATE notes SET ' + ', '.join(k + '=?' for k in fields) + ' WHERE id=?', (*fields.values(), note_id))
     if cursor.rowcount != 1:
         raise ValueError('note not found')
@@ -64,4 +77,27 @@ def set_item_deleted(db, item_id, deleted):
     cursor = db.execute('UPDATE items SET deleted=? WHERE id=?', (int(deleted), item_id))
     if cursor.rowcount != 1:
         raise ValueError('item not found')
+    db.commit()
+
+
+def record_calendar_write(db, note_id, *, success, calendar_id=None, event_id=None):
+    if success and (not calendar_id or not event_id):
+        raise ValueError('successful write requires calendar and event IDs')
+    if success:
+        cursor = db.execute("UPDATE notes SET calendar_id=?, event_id=?, calendar_write_status='success' WHERE id=?", (calendar_id, event_id, note_id))
+    else:
+        cursor = db.execute("UPDATE notes SET calendar_write_status='failed' WHERE id=?", (note_id,))
+    if cursor.rowcount != 1:
+        raise ValueError('note not found')
+    db.commit()
+
+
+def record_calendar_check(db, note_id, *, success):
+    from datetime import datetime, timezone
+    if success:
+        cursor = db.execute("UPDATE notes SET calendar_checked_at=?, calendar_check_status='success' WHERE id=?", (datetime.now(timezone.utc).isoformat(), note_id))
+    else:
+        cursor = db.execute("UPDATE notes SET calendar_check_status='failed' WHERE id=?", (note_id,))
+    if cursor.rowcount != 1:
+        raise ValueError('note not found')
     db.commit()

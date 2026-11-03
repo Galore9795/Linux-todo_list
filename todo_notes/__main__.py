@@ -17,6 +17,8 @@ def main():
     edit.add_argument('--title')
     edit.add_argument('--body')
     edit.add_argument('--deleted', type=int, choices=[0, 1])
+    for field in ('reminder-at', 'start-at', 'end-at', 'due-at'):
+        edit.add_argument('--' + field, help='ISO 8601 with timezone; empty string clears')
     item = sub.add_parser('item-add')
     item.add_argument('id', type=int)
     item.add_argument('text')
@@ -26,6 +28,14 @@ def main():
     done.add_argument('--done', type=int, choices=[0, 1])
     restore = sub.add_parser('item-restore')
     restore.add_argument('id', type=int)
+    check = sub.add_parser('calendar-check', help='record result after actual calendar read and comparison')
+    check.add_argument('id', type=int)
+    check.add_argument('result', choices=['success', 'failed'])
+    write = sub.add_parser('calendar-write', help='record result after actual event write')
+    write.add_argument('id', type=int)
+    write.add_argument('result', choices=['success', 'failed'])
+    write.add_argument('--calendar-id')
+    write.add_argument('--event-id')
     sub.add_parser('export')
     args = parser.parse_args()
     db = store.connect()
@@ -38,8 +48,12 @@ def main():
             note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=?' + ('' if args.command == 'export' or args.all else ' AND deleted=0') + ' ORDER BY id', (note['id'],))]
         print(json.dumps(notes, ensure_ascii=False, indent=2))
     elif args.command == 'update':
-        fields = {k: v for k, v in vars(args).items() if k in ('title', 'body', 'deleted') and v is not None}
+        fields = {k: v for k, v in vars(args).items() if k in ('title', 'body', 'deleted', 'reminder_at', 'start_at', 'end_at', 'due_at') and v is not None}
         store.update(db, args.id, **fields)
+    elif args.command == 'calendar-check':
+        store.record_calendar_check(db, args.id, success=args.result == 'success')
+    elif args.command == 'calendar-write':
+        store.record_calendar_write(db, args.id, success=args.result == 'success', calendar_id=args.calendar_id, event_id=args.event_id)
     elif args.command == 'item-add':
         print(store.add_item(db, args.id, args.text))
     elif args.command == 'item-update':
