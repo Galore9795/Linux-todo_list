@@ -9,6 +9,24 @@
  POSES = ("idle", "listening", "thinking", "reading", "writing", "running",
           "searching", "drawing", "delegating", "compact", "asking", "happy",
           "proud", "oops", "pat", "sleeping", "stretch", "surprised")
+@@ -93,13 +93,15 @@
+     event = value.get("hook_event_name", value.get("event", ""))
+     if not isinstance(event, str):
+         return None
++    if os.environ.get('GROK_HOOK_EVENT') and event == 'Stop' and value.get('reason') == 'shutdown':
++        return None
+     pose = {"UserPromptSubmit": "listening", "BeforeModel": "thinking",
+             "Stop": "happy", "TaskCompleted": "happy", "SessionEnd": "idle",
+             "PreCompact": "compact", "SubagentStart": "delegating",
+             "PermissionRequest": "asking", "Notification": "asking",
+-            "Error": "oops", "PostToolUseFailure": "oops", "PostToolUse": "thinking"}.get(event)
++            "Error": "oops", "StopFailure": "oops", "StopCancelled": "surprised", "PostToolUseFailure": "oops", "PostToolUse": "thinking"}.get(event)
+     if event in ("PreToolUse", "BeforeTool"):
+-        pose = pose_for_tool(value.get("tool_name", value.get("tool", "")))
++        pose = pose_for_tool(value.get("tool_name", value.get("toolName", value.get("tool", ""))))
+     return {"pose": pose, "ts": time.time() if now is None else now} if pose else None
+ 
+ 
 --- a/crosspet/ui.py
 +++ b/crosspet/ui.py
 @@ -1,4 +1,4 @@
@@ -149,6 +167,18 @@
      parser.add_argument("--event", choices=core.POSES, help="send a local state without opening a window")
      parser.add_argument("--character", choices=core.CHARACTERS, default="gpt")
      parser.add_argument("--hook", choices=core.CHARACTERS, help="read a hook JSON object from stdin")
+@@ -20,6 +20,11 @@
+     if args.event or args.hook:
+         if args.event and args.hook:
+             parser.error("--event and --hook cannot be combined")
++        if args.hook and args.hook != 'grok' and os.environ.get('GROK_HOOK_EVENT'):
++            grok_home = Path(os.environ.get('GROK_HOME') or Path.home() / '.grok')
++            if (grok_home / 'hooks' / 'crosspet.json').exists():
++                return 0
++            args.hook = 'grok'
+         value = {"pose": args.event, "ts": time.time()}
+         if args.hook:
+             try:
 --- a/tests/test_ui.py
 +++ b/tests/test_ui.py
 @@ -66,6 +66,26 @@
@@ -194,3 +224,20 @@
          QTest.qWait(800)
          self.assertTrue(self.pet.paused)
          self.pet.panels['devconsole'][0].close()
+--- a/tests/test_core.py
++++ b/tests/test_core.py
+@@ -27,6 +27,14 @@
+         for bad in (None, [], {}, {"payload": None}, {**record(), "timestamp": 43}):
+             self.assertIsNone(core.state_from_record(bad))
+ 
++    def test_grok_events_keep_private_content_out(self):
++        from unittest.mock import patch
++        with patch.dict(os.environ, {'GROK_HOOK_EVENT': '1'}):
++            self.assertEqual(core.hook_state({'hook_event_name': 'PreToolUse', 'toolName': 'apply_patch', 'prompt': 'private'}, 10), {'pose': 'writing', 'ts': 10})
++            self.assertEqual(core.hook_state({'hook_event_name': 'StopCancelled'}, 10)['pose'], 'surprised')
++            self.assertEqual(core.hook_state({'hook_event_name': 'StopFailure'}, 10)['pose'], 'oops')
++            self.assertIsNone(core.hook_state({'hook_event_name': 'Stop', 'reason': 'shutdown'}, 10))
++
+     def test_hook_privacy(self):
+         value = core.hook_state({"hook_event_name": "PreToolUse", "tool_name": "apply_patch", "prompt": "PRIVATE"}, 10)
+         self.assertEqual(value, {"pose": "writing", "ts": 10})

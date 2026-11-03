@@ -29,7 +29,7 @@ def main():
         shutil.copytree(upstream / 'app/web', output / 'upstream/web', dirs_exist_ok=True)
         shutil.copytree(upstream / 'characters', output / 'assets/characters', dirs_exist_ok=True)
         patch = ROOT / 'integrations/crosspet/1.3.8-linux-draft.patch'
-        subprocess.run(['git', 'apply', '--exclude=tests/test_ui.py', str(patch)], cwd=output, check=True)
+        subprocess.run(['git', 'apply', '--exclude=tests/test_ui.py', '--exclude=tests/test_core.py', str(patch)], cwd=output, check=True)
         subprocess.run([sys.executable, str(ROOT / 'scripts/install-crosspet-menu.py'), '--crosspet', str(output)], check=True)
         manifest = output / 'tools_manifest.py'
         manifest.write_text(manifest.read_text().replace('1.3.7-linux.3', '1.3.8-linux.1'))
