@@ -1,7 +1,7 @@
 import sys
 import sqlite3
-from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher, QUrl
+from PyQt6.QtGui import QGuiApplication, QPixmap, QDesktopServices
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog
 from . import store
 
@@ -88,6 +88,31 @@ class ScheduleDialog(QDialog):
         self.accept()
 
 
+class SourceDialog(QDialog):
+    def __init__(self, row, parent=None):
+        from pathlib import Path
+        super().__init__(parent)
+        self.setWindowTitle('便签来源')
+        self.resize(580, 480)
+        layout = QVBoxLayout(self)
+        source = QTextEdit()
+        source.setReadOnly(True)
+        source.setPlainText(row['source'] or '没有保存文字来源')
+        layout.addWidget(source)
+        path = Path(row['source_file']) if row['source_file'] else None
+        if path:
+            image = QPixmap(str(path))
+            if not image.isNull():
+                preview = QLabel()
+                preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                preview.setPixmap(image.scaled(520, 260, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                layout.addWidget(preview)
+            button = QPushButton('打开原始截图')
+            button.setEnabled(path.is_file())
+            button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+            layout.addWidget(button)
+
+
 class Note(QWidget):
     def __init__(self, manager, row):
         super().__init__()
@@ -111,8 +136,17 @@ class Note(QWidget):
         self.item_input.setPlaceholderText('输入清单项目，按回车添加')
         self.item_input.returnPressed.connect(self.add_item)
         layout.addWidget(self.item_input)
+        status_bar = QWidget()
+        status_layout = QHBoxLayout(status_bar)
+        status_layout.setContentsMargins(0, 0, 0, 0)
         self.save_status = QLabel('文字和草稿：已保存')
-        layout.addWidget(self.save_status)
+        status_layout.addWidget(self.save_status)
+        self.source_button = QPushButton('查看来源')
+        self.source_button.clicked.connect(self.show_source)
+        status_layout.addWidget(self.source_button)
+        self.status_bar = status_bar
+        layout.addWidget(status_bar)
+        self.source_button.setVisible(bool(row['source'] or row['source_file']))
         self.calendar_status = QLabel()
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
@@ -145,7 +179,7 @@ class Note(QWidget):
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
         self.calendar_status.setVisible(not row['collapsed'])
-        self.save_status.setVisible(not row['collapsed'])
+        self.status_bar.setVisible(not row['collapsed'])
         for bar in self.secondary_bars:
             bar.setVisible(not row['collapsed'])
         self.collapse_button.setText('展开' if row['collapsed'] else '收起')
@@ -207,6 +241,11 @@ class Note(QWidget):
             item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked)
             self.items.addItem(item)
         self.items.blockSignals(False)
+
+    def show_source(self):
+        row = self.manager.db.execute('SELECT source, source_file FROM notes WHERE id=?', (self.id,)).fetchone()
+        if row:
+            SourceDialog(row, self).exec()
 
     def export_backup(self):
         from .backup import export_archive
@@ -322,7 +361,7 @@ class Note(QWidget):
         self.items.setVisible(visible)
         self.item_input.setVisible(visible)
         self.calendar_status.setVisible(visible)
-        self.save_status.setVisible(visible)
+        self.status_bar.setVisible(visible)
         for bar in self.secondary_bars:
             bar.setVisible(visible)
         self.collapse_button.setText('收起' if visible else '展开')
@@ -387,6 +426,7 @@ class Manager:
                 window = self.windows[note_id]
                 window.sync_items()
                 window.update_calendar_status(row)
+                window.source_button.setVisible(bool(row['source'] or row['source_file']))
                 if 'item_draft' not in window.pending_fields and not window.item_input.hasFocus() and window.item_input.text() != row['item_draft']:
                     window.item_input.blockSignals(True)
                     window.item_input.setText(row['item_draft'])

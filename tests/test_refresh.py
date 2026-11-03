@@ -9,9 +9,10 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PyQt6.QtCore import QEventLoop, QTimer, Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QTextEdit, QPushButton
+from PyQt6.QtGui import QImage, QColor
 from todo_notes import store
-from todo_notes.gui import Manager, ScheduleDialog, visible_position
+from todo_notes.gui import Manager, ScheduleDialog, SourceDialog, visible_position
 
 
 class RefreshTest(unittest.TestCase):
@@ -83,6 +84,26 @@ class RefreshTest(unittest.TestCase):
             manager.timer.stop()
             manager.watcher.removePaths(manager.watcher.files())
             window.close()
+            db.close()
+
+    def test_source_dialog_shows_text_and_opens_saved_image(self):
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            path = Path(root) / 'source.png'
+            image = QImage(20, 20, QImage.Format.Format_RGB32)
+            image.fill(QColor('white'))
+            self.assertTrue(image.save(str(path)))
+            db = store.connect()
+            note_id = store.create(db, 'title', source='原文内容', source_file=path)
+            row = db.execute('SELECT source, source_file FROM notes WHERE id=?', (note_id,)).fetchone()
+            dialog = SourceDialog(row)
+            self.assertEqual(dialog.findChild(QTextEdit).toPlainText(), '原文内容')
+            button = dialog.findChild(QPushButton)
+            self.assertTrue(button.isEnabled())
+            with patch('todo_notes.gui.QDesktopServices.openUrl') as open_url:
+                button.click()
+                self.assertEqual(open_url.call_args.args[0].toLocalFile(), row['source_file'])
+            dialog.close()
             db.close()
 
     def test_failed_save_is_visible_and_retried_without_losing_draft(self):
