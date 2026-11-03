@@ -1,7 +1,27 @@
 import sys
 from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
+from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog
 from . import store
+
+
+def visible_position(x, y, width, areas):
+    """Keep enough of the title bar reachable on at least one available screen."""
+    if not areas:
+        return x, y
+    required = min(64, width)
+    def clamp(value, low, high):
+        return max(low, min(value, max(low, high)))
+    candidates = []
+    for left, top, screen_width, screen_height in areas:
+        nx = clamp(x, left - width + required, left + screen_width - required)
+        ny = clamp(y, top, top + screen_height - 40)
+        candidates.append((nx, ny))
+    return min(candidates, key=lambda p: (p[0]-x)**2 + (p[1]-y)**2)
+
+
+def screen_areas():
+    return [(g.x(), g.y(), g.width(), g.height()) for g in (screen.availableGeometry() for screen in QGuiApplication.screens())]
 
 
 class ScheduleDialog(QDialog):
@@ -127,6 +147,8 @@ class Note(QWidget):
         self.sync_items()
         self.loading = False
         self.show()
+        if row['x'] is not None and row['y'] is not None:
+            self.ensure_visible()
         if row['collapsed']:
             QTimer.singleShot(0, self.adjustSize)
 
@@ -244,6 +266,11 @@ class Note(QWidget):
                 store.set_item_deleted(self.manager.db, ident, False)
                 self.sync_items()
 
+    def ensure_visible(self):
+        x, y = visible_position(self.x(), self.y(), self.width(), screen_areas())
+        if (x, y) != (self.x(), self.y()):
+            self.move(x, y)
+
     def moveEvent(self, event):
         if not self.loading:
             store.update(self.manager.db, self.id, x=self.x(), y=self.y())
@@ -293,6 +320,7 @@ class Note(QWidget):
 class Manager:
     def __init__(self, db):
         self.db, self.windows = db, {}
+        self.screen_areas = screen_areas()
         if not db.execute('SELECT 1 FROM notes WHERE deleted=0').fetchone():
             store.create(db)
         self.refresh()
@@ -318,6 +346,11 @@ class Manager:
                 window.activateWindow()
 
     def refresh(self):
+        areas = screen_areas()
+        if areas and areas != self.screen_areas:
+            self.screen_areas = areas
+            for window in self.windows.values():
+                window.ensure_visible()
         rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0')}
         for note_id in set(self.windows) - set(rows):
             self.windows.pop(note_id).close()

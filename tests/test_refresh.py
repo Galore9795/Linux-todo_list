@@ -10,10 +10,18 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PyQt6.QtCore import QEventLoop, QTimer, Qt
 from PyQt6.QtWidgets import QApplication
 from todo_notes import store
-from todo_notes.gui import Manager, ScheduleDialog
+from todo_notes.gui import Manager, ScheduleDialog, visible_position
 
 
 class RefreshTest(unittest.TestCase):
+    def test_screen_position_recovers_only_when_title_is_unreachable(self):
+        monitors = [(0, 0, 1920, 1040), (-1280, 0, 1280, 984)]
+        self.assertEqual(visible_position(-1000, 120, 300, monitors), (-1000, 120))
+        self.assertEqual(visible_position(1800, 100, 300, monitors), (1800, 100))
+        self.assertEqual(visible_position(-1000, 120, 300, monitors[:1]), (-236, 120))
+        self.assertEqual(visible_position(200, 1400, 300, monitors[:1]), (200, 1000))
+        self.assertEqual(visible_position(200, 1400, 300, []), (200, 1400))
+
     def test_collapse_restores_size_and_survives_restart(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
