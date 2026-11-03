@@ -56,7 +56,14 @@ class ScheduleDialog(QDialog):
             self.error.setText('时间无效：' + str(error))
             return
         if changed:
-            store.update(self.db, self.note_id, **changed)
+            expected = {key: current[key] for key in changed}
+            if 'start_at' in changed or 'end_at' in changed:
+                expected.update({key: current[key] for key in ('start_at', 'end_at')})
+            try:
+                store.update(self.db, self.note_id, expected=expected, **changed)
+            except ValueError:
+                self.error.setText('时间已在其他入口修改，请关闭后重新打开')
+                return
         self.accept()
 
 

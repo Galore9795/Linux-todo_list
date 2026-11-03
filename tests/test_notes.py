@@ -33,6 +33,19 @@ class NotesTest(unittest.TestCase):
         self.assertEqual((row['source'], row['x'], row['pinned'], row['deleted']), ('original', 10, 1, 0))
         self.assertEqual(self.db.execute('SELECT done FROM items WHERE id=?', (item,)).fetchone()[0], 1)
 
+    def test_conditional_update_does_not_overwrite_other_writer(self):
+        note = store.create(self.db, 'original')
+        second = store.connect()
+        try:
+            store.update(second, note, title='external')
+            with self.assertRaises(ValueError):
+                store.update(self.db, note, expected={'title': 'original'}, title='stale')
+            self.assertEqual(self.db.execute('SELECT title FROM notes WHERE id=?', (note,)).fetchone()[0], 'external')
+            store.update(self.db, note, expected={'title': 'external'}, title='new')
+            self.assertEqual(self.db.execute('SELECT title FROM notes WHERE id=?', (note,)).fetchone()[0], 'new')
+        finally:
+            second.close()
+
     def test_changing_linked_schedule_marks_calendar_pending(self):
         note = store.create(self.db, 'scheduled')
         store.update(self.db, note, start_at='2026-11-05T10:00:00+08:00')

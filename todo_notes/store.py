@@ -64,7 +64,7 @@ def create(db, title='', body='', source='', source_file=None):
         raise
 
 
-def update(db, note_id, **fields):
+def update(db, note_id, *, expected=None, **fields):
     allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at', 'item_draft'}
     if not fields or not fields.keys() <= allowed:
         raise ValueError('invalid fields')
@@ -81,9 +81,18 @@ def update(db, note_id, **fields):
         comparisons = ' OR '.join(f"COALESCE({key}, '') != COALESCE(?, '')" for key in schedule_changes)
         assignments.append("calendar_write_status=CASE WHEN event_id IS NOT NULL AND event_id != '' AND (" + comparisons + ") THEN 'pending' ELSE calendar_write_status END")
         params.extend(fields[key] for key in schedule_changes)
-    cursor = db.execute('UPDATE notes SET ' + ', '.join(assignments) + ' WHERE id=?', (*params, note_id))
+    condition = 'id=?'
+    params.append(note_id)
+    if expected is not None:
+        if not expected.keys() <= allowed:
+            raise ValueError('invalid expected fields')
+        for key, value in expected.items():
+            condition += f' AND {key} IS ?'
+            params.append(value)
+    cursor = db.execute('UPDATE notes SET ' + ', '.join(assignments) + ' WHERE ' + condition, params)
     if cursor.rowcount != 1:
-        raise ValueError('note not found')
+        db.rollback()
+        raise ValueError('note not found or changed')
     db.commit()
     notify_change()
 

@@ -20,8 +20,8 @@
 - 开发机：Ubuntu GNOME / X11，桌面图标由 DING 管理。
 - 本地 Crosspet 使用 Python / PyQt6，ui.py 的 apply_layer 切换 WindowStaysOnTopHint；poll 使用 QTimer 每 700ms 读取本地状态，后台线程处理扫描。
 - Crosspet 本地参考位置：同级 LinReburn/tools/usb-tools-runtime/crosspet。先确认路径存在，仅提取相关实现；项目可独立运行。
-- DING 的桌面空白右键菜单位于 desktopManager.js 的 _createDesktopBackgroundMenu。桌面右键入口是独立集成任务。
-- 会话内 iCloud Calendar 工具成功列出日历，支持事件查找与增删改。实际写入尚未验证；接手时检查当前可用工具。
+- 用户后来明确指定入口为 Crosspet 右键菜单；已接入“桌面便签”和 SVG 图标。不要恢复 DING 桌面菜单方案。
+- iCloud Calendar 工具已通过用户授权的测试事件验证创建、读回及原位更新；按请求安排新事件仍需用户确认具体时间。
 - OpenAI Hooks 文档有 UserPromptSubmit 和 Stop 等事件。命令钩子适用于支持的本地 Work/Codex；普通 Chat 和云端编排不能直接视为同样支持。
 
 ## 实现顺序
@@ -29,7 +29,7 @@
 以下步骤是开发顺序，不是删减功能的分期交付。完成 PROJECT.md 的完整交付验收后再交付给用户；有问题再做针对性修正。后台日历同步是用户明确暂缓的独立事项。
 
 1. 建立 Python / Qt 应用与 SQLite 任务存储。先实现一张可编辑、可勾选、可拖动、可缩放、可置顶的便签，重启恢复内容和位置。
-2. 添加多张便签、创建时随机柔和配色、折叠、撤销及删除恢复。接入桌面右键新建。
+2. 添加多张便签、创建时随机柔和配色、折叠、撤销及删除恢复。接入 Crosspet 右键菜单。
 3. 提供统一的本地命令接口供 agent 添加、读取、更新和完成任务。GUI 与命令接口共享存储；任务变化后刷新界面。个人数据放在 XDG 应用数据目录。
 4. 提供跨项目聊天的安装与调用入口。先验证另一个项目的本地 Work/Codex 可以调用，再接入支持环境下的对话触发检查。
 5. 接入聊天中的日历安排：读取最新日程、给出候选时段、用户确认后写入，保存关联事件 ID，并更新上次核对时间。
