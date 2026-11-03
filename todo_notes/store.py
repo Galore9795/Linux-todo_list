@@ -13,7 +13,7 @@ def connect():
     if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(items)')}:
         db.execute('ALTER TABLE items ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
     columns = {row['name'] for row in db.execute('PRAGMA table_info(notes)')}
-    for name in ('reminder_at', 'start_at', 'end_at', 'due_at', 'calendar_id', 'event_id', 'calendar_checked_at'):
+    for name in ('reminder_at', 'start_at', 'end_at', 'due_at', 'calendar_id', 'event_id', 'calendar_checked_at', 'source_file'):
         if name not in columns:
             db.execute(f'ALTER TABLE notes ADD COLUMN {name} TEXT')
     for name, default in (('calendar_write_status', 'not_scheduled'), ('calendar_check_status', 'never')):
@@ -23,12 +23,35 @@ def connect():
     return db
 
 
-def create(db, title='', body='', source=''):
+def create(db, title='', body='', source='', source_file=None):
     import random
+    import shutil
+    import uuid
+    copied = None
+    if source_file:
+        original = Path(source_file)
+        if not original.is_file():
+            raise ValueError('source file not found')
+        root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes' / 'sources'
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        copied = root / (uuid.uuid4().hex + original.suffix.lower())
+        try:
+            with original.open('rb') as src, copied.open('xb') as dst:
+                os.chmod(copied, 0o600)
+                shutil.copyfileobj(src, dst)
+        except Exception:
+            copied.unlink(missing_ok=True)
+            raise
     color = random.choice(['#fff3b0', '#d9f2dc', '#dbeafe', '#fce0e8', '#eee3fa'])
-    cursor = db.execute('INSERT INTO notes (title, body, color, source) VALUES (?, ?, ?, ?)', (title, body, color, source))
-    db.commit()
-    return cursor.lastrowid
+    try:
+        cursor = db.execute('INSERT INTO notes (title, body, color, source, source_file) VALUES (?, ?, ?, ?, ?)', (title, body, color, source, str(copied) if copied else None))
+        db.commit()
+        return cursor.lastrowid
+    except Exception:
+        db.rollback()
+        if copied:
+            copied.unlink(missing_ok=True)
+        raise
 
 
 def update(db, note_id, **fields):

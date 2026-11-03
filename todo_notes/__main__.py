@@ -12,6 +12,7 @@ def main():
     add.add_argument('title')
     add.add_argument('--body', default='')
     add.add_argument('--source', default='')
+    add.add_argument('--source-file', help='copy submitted screenshot or other source into application data')
     sub.add_parser('list').add_argument('--all', action='store_true')
     edit = sub.add_parser('update')
     edit.add_argument('id', type=int)
@@ -44,7 +45,7 @@ def main():
         store.create(db)
         launch(db)
     elif args.command == 'add':
-        print(store.create(db, args.title, args.body, args.source))
+        print(store.create(db, args.title, args.body, args.source, args.source_file))
     elif args.command in ('list', 'export'):
         rows = db.execute('SELECT * FROM notes' + ('' if args.command == 'export' or args.all else ' WHERE deleted=0')).fetchall()
         notes = [dict(r) for r in rows]

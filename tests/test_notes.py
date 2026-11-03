@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 from todo_notes import store
 
@@ -58,6 +59,18 @@ class NotesTest(unittest.TestCase):
         self.assertEqual((row['calendar_checked_at'], row['event_id'], row['calendar_check_status'], row['calendar_write_status']), (before, 'event', 'failed', 'failed'))
         with self.assertRaises(ValueError):
             store.record_calendar_write(self.db, note, success=True)
+
+    def test_source_file_is_copied_and_survives_original_removal(self):
+        original = Path(self.tmp.name) / 'original.png'
+        original.write_bytes(b'screenshot data')
+        note = store.create(self.db, 'from screenshot', source='interpreted', source_file=original)
+        original.unlink()
+        row = self.db.execute('SELECT source, source_file FROM notes WHERE id=?', (note,)).fetchone()
+        self.assertEqual(row['source'], 'interpreted')
+        self.assertEqual(Path(row['source_file']).read_bytes(), b'screenshot data')
+        self.assertEqual(Path(row['source_file']).stat().st_mode & 0o777, 0o600)
+        with self.assertRaises(ValueError):
+            store.create(self.db, source_file=original)
 
     def test_other_process_updates_shared_data(self):
         note = store.create(self.db, 'title')
