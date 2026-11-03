@@ -1,8 +1,12 @@
 import subprocess
+import os
+import tempfile
 from PyQt6.QtWidgets import QApplication, QWidget
 from PyQt6.QtTest import QTest
 from todo_notes import store
 from todo_notes.gui import Manager
+test_data = tempfile.TemporaryDirectory()
+os.environ['XDG_DATA_HOME'] = test_data.name
 app=QApplication([])
 app.setQuitOnLastWindowClosed(False)
 db=store.connect(); manager=Manager(db); note=next(iter(manager.windows.values()))
@@ -18,4 +22,4 @@ note.pin(); other.activateWindow(); QTest.qWait(600)
 print('pinned note above ordinary:',compare())
 other.showFullScreen(); other.activateWindow(); QTest.qWait(600)
 print('pinned note above fullscreen:',compare())
-other.close(); manager.timer.stop(); manager.watcher.removePaths(manager.watcher.files()); note.close(); db.close()
+other.close(); manager.timer.stop(); manager.watcher.removePaths(manager.watcher.files()); note.close(); db.close(); test_data.cleanup()
