@@ -1,0 +1,91 @@
+--- a/crosspet/core.py
++++ b/crosspet/core.py
+@@ -8,7 +8,7 @@
+ import time
+ from datetime import datetime, timedelta, timezone
+ 
+-CHARACTERS = ("gpt", "claude", "deepseek", "gemini", "glm", "qwen")
++CHARACTERS = ("gpt", "claude", "deepseek", "gemini", "glm", "qwen", "grok")
+ POSES = ("idle", "listening", "thinking", "reading", "writing", "running",
+          "searching", "drawing", "delegating", "compact", "asking", "happy",
+          "proud", "oops", "pat", "sleeping", "stretch", "surprised")
+--- a/crosspet/ui.py
++++ b/crosspet/ui.py
+@@ -21,7 +21,7 @@
+ ASSETS = ROOT / 'assets' / 'characters'
+ WEB = ROOT / 'upstream' / 'web'
+ DSH_TOP_UP_URL = 'https://platform.deepseek.com/top_up'
+-AGENT_ICONS = {'gpt':'openai','claude':'claude','deepseek':'deepseek','gemini':'gemini','glm':'glm','qwen':'qwen'}
++AGENT_ICONS = {'grok':'sparkles','gpt':'openai','claude':'claude','deepseek':'deepseek','gemini':'gemini','glm':'glm','qwen':'qwen'}
+ AGENT_DESKTOPS = {
+     'gpt':('chatgpt.desktop',),
+     'claude':('claude.desktop','claude-desktop.desktop','anthropic-claude.desktop'),
+@@ -684,12 +684,14 @@
+         chars = []
+         for character in core.CHARACTERS:
+             c = self.characters[character]
+-            value = dict(id=character,name=c['name'],defaultName=c['defaultName'],custom=self.settings.get('names',{}).get(character,''),skin=c.get('skin',''))
++            def images(folder):
++                return {name: (ASSETS / folder / (name + '.webp')).as_uri() for name in ('portrait', 'portrait-card', 'avatar', 'idle') if (ASSETS / folder / (name + '.webp')).exists()}
++            value = dict(id=character,name=c['name'],defaultName=c['defaultName'],custom=self.settings.get('names',{}).get(character,''),skin=c.get('skin',''),images=images(character),accent=c.get('accent'))
+             if character in self.skin_choices:
+-                value['skins'] = [dict(id='',name=c.get('outfit','原版'))]+self.skin_choices[character]
++                value['skins'] = [dict(id='',name=c.get('outfit','原版'),images=images(character))]+[dict(skin, images=images(skin['id'])) for skin in self.skin_choices[character]]
+             chars.append(value)
+         login = (core.xdg('XDG_CONFIG_HOME','.config')/'autostart/crosspet-ubuntu-lite.desktop').is_file()
+-        return {**self.settings,'login':login,'size':self.scale,'version':'1.3.7 · Linux 移植版','appVersion':'1.3.7','character':self.character,'characters':chars,
++        return {**self.settings,'login':login,'size':self.scale,'version':'1.3.8 · Linux 移植版','appVersion':'1.3.8','character':self.character,'characters':chars,
+                 'integrations':[], 'gptQuotaNote':'读取本机 Codex 会话日志中的额度；保留最后记录并标注时间，过期不推算为满额。'}
+ 
+     def open_panel(self,kind,tab=None):
+@@ -706,7 +708,7 @@
+                 view.page().runJavaScript(js_call('showTab',tab))
+             return
+         window = PanelWindow(lambda:self.close_panel(kind))
+-        window.setWindowTitle('CrossPet 设置' if kind=='settings' else 'CrossPet 动作与场景预览')
++        window.setWindowTitle({'settings':'CrossPet 设置','characters':'CrossPet 角色','devconsole':'CrossPet 动作与场景预览'}[kind])
+         window.resize(680 if kind=='settings' else 1040,650 if kind=='settings' else 780)
+         layout = QVBoxLayout(window); layout.setContentsMargins(0,0,0,0)
+         status = QLabel('正在加载…', window)
+@@ -740,7 +742,7 @@
+             if not ok:
+                 failed('页面加载失败，请点击重新加载。')
+                 return
+-            script = "typeof setState === 'function'" if kind == 'settings' else "typeof boot === 'function'"
++            script = "typeof setState === 'function'" if kind in ('settings', 'characters') else "typeof boot === 'function'"
+             def ready(ok):
+                 if not current():
+                     return
+@@ -806,16 +808,20 @@
+             self.push_settings()
+             if tab:
+                 page.runJavaScript(js_call('showTab',tab))
++        elif kind == 'characters':
++            page.runJavaScript(js_call('setState', self.settings_state()))
+         else:
+             page.runJavaScript(js_call('boot',self.manifest)+';'+js_call('setAppInfo',{'version':'1.3.7 Linux'}))
+ 
+     def push_settings(self):
+-        if 'settings' in self.panels and not self.closed:
+-            self.panels['settings'][1].page().runJavaScript(js_call('setState',self.settings_state()))
++        if not self.closed:
++            for kind in ('settings', 'characters'):
++                if kind in self.panels:
++                    self.panels[kind][1].page().runJavaScript(js_call('setState',self.settings_state()))
+ 
+     def panel_message(self,kind,msg):
+         cmd = msg.get('cmd')
+-        if kind=='settings':
++        if kind in ('settings', 'characters'):
+             if cmd=='get':
+                 self.push_settings()
+             elif cmd=='set':
+@@ -833,7 +839,7 @@
+                 if action=='resetPosition': self.reset_position()
+                 elif action in ('openReleases','openGithub','openSource','feedback'): QDesktopServices.openUrl(QUrl('https://github.com/lokicorvus/crosspet'))
+                 elif action=='devConsole': self.open_panel('devconsole')
+-                elif action=='openCharacters': QDesktopServices.openUrl(QUrl.fromLocalFile(str(ASSETS)))
++                elif action=='openCharacters': self.open_panel('characters')
+                 elif action=='openData': QDesktopServices.openUrl(QUrl.fromLocalFile(str(core.state_dir())))
+         else:
+             if cmd=='pet' and isinstance(msg.get('code'),str):
