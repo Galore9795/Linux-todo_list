@@ -92,3 +92,5 @@ Crosspet 上游 1.3.8 已建立隔离适配草稿，尚未替换当前安装；�
 聊天安排时，可把刚读取的完整日历事件 JSON（数组或含 `events` 的结果）通过标准输入传给 `suggest-slots --day YYYY-MM-DD --zone Asia/Hong_Kong --work-start 09:00 --work-end 18:00 --duration 60 --buffer 15`，得到当天候选时段。此计算不联网、不写日历；需要使用实际工作时段和最新完整日历结果，确认后再写入。
 
 已用隔离测试截图验证本地 Codex 能识别清单、创建便签并保留原图副本；不同聊天环境是否能访问本机附件取决于该环境的文件访问能力。
+
+重建本机 Crosspet 1.3.8 适配包：准备原有定制 Linux 1.3.7 目录和官方 1.3.8 Git 检出，然后运行 `python3 scripts/prepare-crosspet-138.py --base 原目录 --upstream 官方检出 --output 新目录`。脚本校验上游提交、保留原目录中的定制、应用适配与便签菜单并生成校验清单，不会自动安装或覆盖已有输出目录。
