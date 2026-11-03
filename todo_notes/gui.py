@@ -1,7 +1,63 @@
 import sys
 from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox
 from . import store
+
+
+class ScheduleDialog(QDialog):
+    def __init__(self, db, note_id, parent=None):
+        super().__init__(parent)
+        self.db, self.note_id = db, note_id
+        self.setWindowTitle('编辑任务时间')
+        layout = QVBoxLayout(self)
+        help_text = QLabel('填写本地时间，格式：2026-11-04 14:30；留空表示未设置。\n保存只修改便签，不会修改日历事件。')
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+        form = QFormLayout()
+        self.fields = {}
+        self.original_values = {}
+        self.original_texts = {}
+        row = db.execute('SELECT * FROM notes WHERE id=?', (note_id,)).fetchone()
+        from datetime import datetime
+        for key, label in [('reminder_at', '提醒'), ('start_at', '执行开始'), ('end_at', '执行结束'), ('due_at', '截止')]:
+            value = datetime.fromisoformat(row[key]).astimezone().strftime('%Y-%m-%d %H:%M') if row[key] else ''
+            field = QLineEdit(value)
+            field.setPlaceholderText('年-月-日 时:分')
+            self.fields[key] = field
+            self.original_values[key] = row[key]
+            self.original_texts[key] = value
+            form.addRow(label, field)
+        layout.addLayout(form)
+        self.error = QLabel()
+        self.error.setWordWrap(True)
+        layout.addWidget(self.error)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def save(self):
+        from datetime import datetime
+        changed = {}
+        try:
+            for key, field in self.fields.items():
+                text = field.text().strip()
+                if text != self.original_texts[key]:
+                    changed[key] = datetime.strptime(text, '%Y-%m-%d %H:%M').astimezone().isoformat(timespec='minutes') if text else ''
+            current = self.db.execute('SELECT * FROM notes WHERE id=?', (self.note_id,)).fetchone()
+            if current is None or any(current[key] != self.original_values[key] for key in changed):
+                self.error.setText('时间已在其他入口修改，请关闭后重新打开')
+                return
+            start = changed.get('start_at', current['start_at'])
+            end = changed.get('end_at', current['end_at'])
+            if start and end and datetime.fromisoformat(end) <= datetime.fromisoformat(start):
+                raise ValueError('执行结束时间须晚于开始时间')
+        except ValueError as error:
+            self.error.setText('时间无效：' + str(error))
+            return
+        if changed:
+            store.update(self.db, self.note_id, **changed)
+        self.accept()
 
 
 class Note(QWidget):
@@ -29,8 +85,9 @@ class Note(QWidget):
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
         self.update_calendar_status(row)
-        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('撤销', self.undo_item), ('恢复', self.restore), ('删除', self.delete)]
-        for group in (actions[:3], actions[3:]):
+        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('时间', self.edit_schedule), ('删除项目', self.delete_item), ('撤销', self.undo_item), ('恢复', self.restore), ('删除', self.delete)]
+        self.secondary_bars = []
+        for group in (actions[:3], actions[3:6], actions[6:]):
             container = QWidget()
             bar = QHBoxLayout(container)
             bar.setContentsMargins(0, 0, 0, 0)
@@ -43,8 +100,8 @@ class Note(QWidget):
                     self.collapse_button = button
                 bar.addWidget(button)
             layout.addWidget(container)
-            if group == actions[3:]:
-                self.secondary_bar = container
+            if group != actions[:3]:
+                self.secondary_bars.append(container)
         self.title.textChanged.connect(lambda text: store.update(self.manager.db, self.id, title=text) if not self.loading else None)
         self.body.textChanged.connect(lambda: store.update(self.manager.db, self.id, body=self.body.toPlainText()) if not self.loading else None)
         self.resize(row['width'], row['height'])
@@ -56,7 +113,8 @@ class Note(QWidget):
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
         self.calendar_status.setVisible(not row['collapsed'])
-        self.secondary_bar.setVisible(not row['collapsed'])
+        for bar in self.secondary_bars:
+            bar.setVisible(not row['collapsed'])
         self.collapse_button.setText('展开' if row['collapsed'] else '收起')
         self.sync_items()
         self.loading = False
@@ -95,6 +153,11 @@ class Note(QWidget):
             item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked)
             self.items.addItem(item)
         self.items.blockSignals(False)
+
+    def edit_schedule(self):
+        dialog = ScheduleDialog(self.manager.db, self.id, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.manager.refresh()
 
     def item_state(self, item_id):
         row = self.manager.db.execute('SELECT text, done, deleted FROM items WHERE id=?', (item_id,)).fetchone()
@@ -182,7 +245,8 @@ class Note(QWidget):
         self.items.setVisible(visible)
         self.item_input.setVisible(visible)
         self.calendar_status.setVisible(visible)
-        self.secondary_bar.setVisible(visible)
+        for bar in self.secondary_bars:
+            bar.setVisible(visible)
         self.collapse_button.setText('收起' if visible else '展开')
         store.update(self.manager.db, self.id, collapsed=int(not visible))
         if visible:

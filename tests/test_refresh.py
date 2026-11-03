@@ -10,7 +10,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PyQt6.QtCore import QEventLoop, QTimer, Qt
 from PyQt6.QtWidgets import QApplication
 from todo_notes import store
-from todo_notes.gui import Manager
+from todo_notes.gui import Manager, ScheduleDialog
 
 
 class RefreshTest(unittest.TestCase):
@@ -45,6 +45,31 @@ class RefreshTest(unittest.TestCase):
             manager.timer.stop()
             manager.watcher.removePaths(manager.watcher.files())
             window.close()
+            db.close()
+
+    def test_schedule_edit_validates_and_preserves_external_updates(self):
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note = store.create(db, 'test')
+            dialog = ScheduleDialog(db, note)
+            dialog.fields['start_at'].setText('2026-11-05 14:00')
+            dialog.fields['end_at'].setText('2026-11-05 13:00')
+            dialog.save()
+            self.assertIn('晚于', dialog.error.text())
+            self.assertIsNone(db.execute('SELECT start_at FROM notes WHERE id=?', (note,)).fetchone()[0])
+            dialog.fields['end_at'].setText('2026-11-05 15:00')
+            store.update(db, note, due_at='2026-11-06T12:00:22+08:00')
+            dialog.save()
+            row = db.execute('SELECT * FROM notes WHERE id=?', (note,)).fetchone()
+            self.assertEqual(row['due_at'], '2026-11-06T12:00:22+08:00')
+            self.assertTrue(row['start_at'].startswith('2026-11-05T14:00'))
+            conflict = ScheduleDialog(db, note)
+            conflict.fields['start_at'].setText('2026-11-05 12:00')
+            store.update(db, note, start_at='2026-11-05T13:00:00+08:00')
+            conflict.save()
+            self.assertIn('其他入口', conflict.error.text())
+            self.assertEqual(db.execute('SELECT start_at FROM notes WHERE id=?', (note,)).fetchone()[0], '2026-11-05T13:00:00+08:00')
             db.close()
 
     def test_checklist_undo_and_external_change(self):
