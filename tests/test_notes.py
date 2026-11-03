@@ -32,6 +32,18 @@ class NotesTest(unittest.TestCase):
         self.assertEqual((row['source'], row['x'], row['pinned'], row['deleted']), ('original', 10, 1, 0))
         self.assertEqual(self.db.execute('SELECT done FROM items WHERE id=?', (item,)).fetchone()[0], 1)
 
+    def test_item_deletion_survives_restart_and_can_be_restored(self):
+        note = store.create(self.db, 'title')
+        item = store.add_item(self.db, note, 'keep me')
+        store.update_item(self.db, item, done=True)
+        store.delete_item(self.db, item)
+        self.db.close()
+        self.db = store.connect()
+        self.assertEqual(self.db.execute('SELECT deleted FROM items WHERE id=?', (item,)).fetchone()[0], 1)
+        store.set_item_deleted(self.db, item, False)
+        row = self.db.execute('SELECT text, done, deleted FROM items WHERE id=?', (item,)).fetchone()
+        self.assertEqual(tuple(row), ('keep me', 1, 0))
+
     def test_other_process_updates_shared_data(self):
         note = store.create(self.db, 'title')
         subprocess.run([sys.executable, '-m', 'todo_notes', 'item-add', str(note), 'external'], check=True, capture_output=True)

@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog
 from . import store
 
 
@@ -25,7 +25,7 @@ class Note(QWidget):
         self.item_input.returnPressed.connect(self.add_item)
         layout.addWidget(self.item_input)
         bar = QHBoxLayout()
-        for label, callback in [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('删除', self.delete)]:
+        for label, callback in [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]:
             button = QPushButton(label)
             button.clicked.connect(callback)
             bar.addWidget(button)
@@ -44,7 +44,7 @@ class Note(QWidget):
         self.show()
 
     def sync_items(self):
-        rows = self.manager.db.execute('SELECT * FROM items WHERE note_id=? ORDER BY id', (self.id,)).fetchall()
+        rows = self.manager.db.execute('SELECT * FROM items WHERE note_id=? AND deleted=0 ORDER BY id', (self.id,)).fetchall()
         current = [(self.items.item(i).data(Qt.ItemDataRole.UserRole), self.items.item(i).text(), self.items.item(i).checkState() == Qt.CheckState.Checked) for i in range(self.items.count())]
         desired = [(r['id'], r['text'], bool(r['done'])) for r in rows]
         if current == desired or self.items.state() == QListWidget.State.EditingState:
@@ -74,6 +74,23 @@ class Note(QWidget):
         if item:
             store.delete_item(self.manager.db, item.data(Qt.ItemDataRole.UserRole))
             self.sync_items()
+
+    def restore(self):
+        notes = self.manager.db.execute('SELECT id, title FROM notes WHERE deleted=1 ORDER BY id DESC').fetchall()
+        items = self.manager.db.execute('SELECT id, text FROM items WHERE note_id=? AND deleted=1 ORDER BY id DESC', (self.id,)).fetchall()
+        choices = [('便签 #%s: %s' % (r['id'], r['title']), 'note', r['id']) for r in notes]
+        choices += [('项目 #%s: %s' % (r['id'], r['text']), 'item', r['id']) for r in items]
+        if not choices:
+            return
+        selection, accepted = QInputDialog.getItem(self, '恢复删除', '选择要恢复的内容', [c[0] for c in choices], 0, False)
+        if accepted:
+            _, kind, ident = next(c for c in choices if c[0] == selection)
+            if kind == 'note':
+                store.update(self.manager.db, ident, deleted=0)
+                self.manager.refresh()
+            else:
+                store.set_item_deleted(self.manager.db, ident, False)
+                self.sync_items()
 
     def moveEvent(self, event):
         if not self.loading:
@@ -105,6 +122,8 @@ class Note(QWidget):
 
     def delete(self):
         store.update(self.manager.db, self.id, deleted=1)
+        if not self.manager.db.execute('SELECT 1 FROM notes WHERE deleted=0').fetchone():
+            store.create(self.manager.db)
         self.manager.refresh()
 
 

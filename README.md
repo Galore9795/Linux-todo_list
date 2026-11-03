@@ -44,3 +44,5 @@
 已做命令添加和 Qt 离屏启动检查；尚未完成桌面实际验收。清单勾选、桌面右键、跨聊天安装及日历安排等仍待实现。
 
 清单：在便签中输入项目并按回车添加，勾选完成，双击文字编辑；选中项目后可删除。命令行可使用 `python3 -m todo_notes item-add 便签ID '项目'`、`python3 -m todo_notes item-update 项目ID --done 1`；列表与导出包含项目 ID 和完成状态。自动化检查：`python3 -m unittest discover -s tests -v`。
+
+便签上的“恢复”可找回删除的便签和当前便签中删除的清单项目；删除最后一张便签时会保留一个空白入口。命令行可用 `python3 -m todo_notes item-restore 项目ID` 恢复项目，`list --all` 和 `export` 包含已删除项目。

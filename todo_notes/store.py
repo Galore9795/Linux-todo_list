@@ -10,6 +10,8 @@ def connect():
     db.row_factory = sqlite3.Row
     db.execute('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT "", body TEXT NOT NULL DEFAULT "", color TEXT NOT NULL, x INTEGER, y INTEGER, width INTEGER DEFAULT 300, height INTEGER DEFAULT 280, pinned INTEGER DEFAULT 0, collapsed INTEGER DEFAULT 0, deleted INTEGER DEFAULT 0, source TEXT DEFAULT "")')
     db.execute('CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, note_id INTEGER NOT NULL REFERENCES notes(id), text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0)')
+    if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(items)')}:
+        db.execute('ALTER TABLE items ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
     db.commit()
     return db
 
@@ -55,5 +57,11 @@ def update_item(db, item_id, *, text=None, done=None):
 
 
 def delete_item(db, item_id):
-    db.execute('DELETE FROM items WHERE id=?', (item_id,))
+    set_item_deleted(db, item_id, True)
+
+
+def set_item_deleted(db, item_id, deleted):
+    cursor = db.execute('UPDATE items SET deleted=? WHERE id=?', (int(deleted), item_id))
+    if cursor.rowcount != 1:
+        raise ValueError('item not found')
     db.commit()

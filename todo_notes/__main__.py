@@ -24,6 +24,8 @@ def main():
     done.add_argument('id', type=int)
     done.add_argument('--text')
     done.add_argument('--done', type=int, choices=[0, 1])
+    restore = sub.add_parser('item-restore')
+    restore.add_argument('id', type=int)
     sub.add_parser('export')
     args = parser.parse_args()
     db = store.connect()
@@ -33,7 +35,7 @@ def main():
         rows = db.execute('SELECT * FROM notes' + ('' if args.command == 'export' or args.all else ' WHERE deleted=0')).fetchall()
         notes = [dict(r) for r in rows]
         for note in notes:
-            note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=? ORDER BY id', (note['id'],))]
+            note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=?' + ('' if args.command == 'export' or args.all else ' AND deleted=0') + ' ORDER BY id', (note['id'],))]
         print(json.dumps(notes, ensure_ascii=False, indent=2))
     elif args.command == 'update':
         fields = {k: v for k, v in vars(args).items() if k in ('title', 'body', 'deleted') and v is not None}
@@ -42,6 +44,8 @@ def main():
         print(store.add_item(db, args.id, args.text))
     elif args.command == 'item-update':
         store.update_item(db, args.id, text=args.text, done=args.done)
+    elif args.command == 'item-restore':
+        store.set_item_deleted(db, args.id, False)
     else:
         from .gui import run
         run(db)
