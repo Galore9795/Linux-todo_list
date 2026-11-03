@@ -37,7 +37,7 @@ def main():
     check.add_argument('result', choices=['success', 'failed'])
     write = sub.add_parser('calendar-write', help='record result after actual event write')
     write.add_argument('id', type=int)
-    write.add_argument('result', choices=['success', 'failed'])
+    write.add_argument('result', choices=['success', 'failed', 'unknown'])
     write.add_argument('--calendar-id')
     write.add_argument('--event-id')
     slots = sub.add_parser('suggest-slots', help='read fresh calendar events JSON from stdin and suggest free slots')
@@ -83,7 +83,10 @@ def main():
     elif args.command == 'calendar-check':
         store.record_calendar_check(db, args.id, success=args.result == 'success')
     elif args.command == 'calendar-write':
-        store.record_calendar_write(db, args.id, success=args.result == 'success', calendar_id=args.calendar_id, event_id=args.event_id)
+        if args.result == 'unknown':
+            store.record_calendar_unknown(db, args.id, calendar_id=args.calendar_id, event_id=args.event_id)
+        else:
+            store.record_calendar_write(db, args.id, success=args.result == 'success', calendar_id=args.calendar_id, event_id=args.event_id)
     elif args.command == 'item-add':
         print(store.add_item(db, args.id, args.text))
     elif args.command == 'item-update':

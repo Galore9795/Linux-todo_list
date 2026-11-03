@@ -79,7 +79,7 @@ def update(db, note_id, *, expected=None, **fields):
     schedule_changes = [k for k in ('start_at', 'end_at') if k in fields]
     if schedule_changes:
         comparisons = ' OR '.join(f"COALESCE({key}, '') != COALESCE(?, '')" for key in schedule_changes)
-        assignments.append("calendar_write_status=CASE WHEN event_id IS NOT NULL AND event_id != '' AND (" + comparisons + ") THEN 'pending' ELSE calendar_write_status END")
+        assignments.append("calendar_write_status=CASE WHEN calendar_write_status = 'unknown' THEN 'unknown' WHEN event_id IS NOT NULL AND event_id != '' AND (" + comparisons + ") THEN 'pending' ELSE calendar_write_status END")
         params.extend(fields[key] for key in schedule_changes)
     condition = 'id=?'
     params.append(note_id)
@@ -164,6 +164,15 @@ def record_calendar_write(db, note_id, *, success, calendar_id=None, event_id=No
     db.commit()
     notify_change()
 
+
+
+def record_calendar_unknown(db, note_id, *, calendar_id=None, event_id=None):
+    """Preserve any returned IDs when a calendar write has an unknown outcome."""
+    cursor = db.execute("UPDATE notes SET calendar_write_status='unknown', calendar_id=COALESCE(NULLIF(?, ''), calendar_id), event_id=COALESCE(NULLIF(?, ''), event_id) WHERE id=?", (calendar_id, event_id, note_id))
+    if cursor.rowcount != 1:
+        raise ValueError('note not found')
+    db.commit()
+    notify_change()
 
 def record_calendar_check(db, note_id, *, success):
     from datetime import datetime, timezone

@@ -79,6 +79,20 @@ class NotesTest(unittest.TestCase):
         finally:
             second.close()
 
+    def test_unknown_calendar_write_preserves_identity_and_is_not_hidden(self):
+        note = store.create(self.db, 'test')
+        store.record_calendar_check(self.db, note, success=True)
+        before = self.db.execute('SELECT calendar_checked_at FROM notes WHERE id=?', (note,)).fetchone()[0]
+        store.record_calendar_unknown(self.db, note, calendar_id='cal', event_id='maybe-event')
+        store.update(self.db, note, start_at='2026-11-05T11:00:00+08:00')
+        row = self.db.execute('SELECT * FROM notes WHERE id=?', (note,)).fetchone()
+        self.assertEqual((row['calendar_write_status'], row['calendar_id'], row['event_id'], row['calendar_checked_at']), ('unknown', 'cal', 'maybe-event', before))
+        store.record_calendar_unknown(self.db, note)
+        row = self.db.execute('SELECT calendar_id, event_id FROM notes WHERE id=?', (note,)).fetchone()
+        self.assertEqual(tuple(row), ('cal', 'maybe-event'))
+        store.record_calendar_write(self.db, note, success=True, calendar_id='cal', event_id='maybe-event')
+        self.assertEqual(self.db.execute('SELECT calendar_write_status FROM notes WHERE id=?', (note,)).fetchone()[0], 'success')
+
     def test_changing_linked_schedule_marks_calendar_pending(self):
         note = store.create(self.db, 'scheduled')
         store.update(self.db, note, start_at='2026-11-05T10:00:00+08:00')

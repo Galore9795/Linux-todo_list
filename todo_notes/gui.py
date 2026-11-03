@@ -222,7 +222,7 @@ class Note(QWidget):
             status += '（上次核对失败）'
         parts.append('日历核对：' + status)
         if row['calendar_write_status'] != 'not_scheduled':
-            labels = {'success': '成功', 'failed': '失败', 'pending': '执行时间已修改，待更新日历'}
+            labels = {'success': '成功', 'failed': '失败', 'pending': '执行时间已修改，待更新日历', 'unknown': '结果不确定，需先核对事件'}
             parts.append('日历写入：' + labels.get(row['calendar_write_status'], row['calendar_write_status']))
         self.calendar_status.setText('\n'.join(parts))
 
