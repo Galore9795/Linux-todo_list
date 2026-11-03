@@ -7,6 +7,7 @@ from . import store
 def main():
     parser = argparse.ArgumentParser(description='Linux desktop notes')
     sub = parser.add_subparsers(dest='command')
+    sub.add_parser('new', help='create a blank note and start the app if needed')
     add = sub.add_parser('add')
     add.add_argument('title')
     add.add_argument('--body', default='')
@@ -39,7 +40,10 @@ def main():
     sub.add_parser('export')
     args = parser.parse_args()
     db = store.connect()
-    if args.command == 'add':
+    if args.command == 'new':
+        store.create(db)
+        launch(db)
+    elif args.command == 'add':
         print(store.create(db, args.title, args.body, args.source))
     elif args.command in ('list', 'export'):
         rows = db.execute('SELECT * FROM notes' + ('' if args.command == 'export' or args.all else ' WHERE deleted=0')).fetchall()
@@ -61,8 +65,21 @@ def main():
     elif args.command == 'item-restore':
         store.set_item_deleted(db, args.id, False)
     else:
-        from .gui import run
-        run(db)
+        launch(db)
+
+def launch(db):
+    import fcntl
+    import os
+    from pathlib import Path
+    root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
+    lock = (root / 'app.lock').open('w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return
+    from .gui import run
+    run(db)
+
 
 if __name__ == '__main__':
     main()

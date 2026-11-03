@@ -52,3 +52,5 @@
 运行 `scripts/install-local.sh`，安装 `~/.local/bin/linux-todo-notes` 和用户级 Codex skill。确保 `~/.local/bin` 在 PATH 中；新启动的本地 Codex 会话可发现该 skill。安装入口引用当前仓库位置，移动仓库后需删除这两个入口并重新安装。命令行可在任意目录运行；当前已通过独立临时数据目录的跨目录调用检查，尚未验证另一个 Codex 会话实际自动调用。
 
 时间与日历记录：`update ID --reminder-at ISO时间 --start-at ISO时间 --end-at ISO时间 --due-at ISO时间` 分别保存提醒、执行开始和结束、截止时间，时间须带时区偏移，空字符串可清除。便签显示这些时间、上次核对时间及写入状态。`calendar-check ID success|failed` 和 `calendar-write ID success|failed` 只记录实际日历操作的结果，不会访问日历；成功写入时须提供 `--calendar-id` 和 `--event-id`。失败保留已有事件关联和上次成功核对时间。聊天端日历实际读写流程仍需验证。
+
+桌面菜单：`python3 scripts/install-ding-menu.py` 在用户目录复制当前系统 DING 并加入“新建便签”，不修改系统文件；GNOME 会话重新登录后才加载该副本。该副本不会自动跟随系统 DING 更新；撤销时删除 `~/.local/share/gnome-shell/extensions/ding@rastersoft.com` 并重新登录。安装脚本不会覆盖已有用户版 DING。入口通过 `linux-todo-notes new` 创建便签并启动应用（已有实例时由其刷新）。本机已安装用户副本，尚未重新登录验证菜单。
