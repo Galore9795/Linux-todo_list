@@ -38,6 +38,15 @@ def main():
     write.add_argument('result', choices=['success', 'failed'])
     write.add_argument('--calendar-id')
     write.add_argument('--event-id')
+    slots = sub.add_parser('suggest-slots', help='read fresh calendar events JSON from stdin and suggest free slots')
+    slots.add_argument('--day', required=True)
+    slots.add_argument('--zone', required=True)
+    slots.add_argument('--work-start', required=True)
+    slots.add_argument('--work-end', required=True)
+    slots.add_argument('--duration', type=int, required=True)
+    slots.add_argument('--buffer', type=int, default=0)
+    slots.add_argument('--step', type=int, default=30)
+    slots.add_argument('--limit', type=int, default=5)
     sub.add_parser('export')
     archive = sub.add_parser('export-archive', help='export notes and source files as a ZIP backup')
     archive.add_argument('path')
@@ -54,6 +63,13 @@ def main():
         for note in notes:
             note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=?' + ('' if args.command == 'export' or args.all else ' AND deleted=0') + ' ORDER BY id', (note['id'],))]
         print(json.dumps(notes, ensure_ascii=False, indent=2))
+    elif args.command == 'suggest-slots':
+        from .slots import suggest
+        data = json.load(sys.stdin)
+        events = data if isinstance(data, list) else data['events']
+        if isinstance(data, dict) and (data.get('has_more') or data.get('incomplete')):
+            raise ValueError('calendar results are incomplete')
+        print(json.dumps(suggest(events, args.day, args.zone, args.work_start, args.work_end, args.duration, args.buffer, args.step, limit=args.limit), ensure_ascii=False, indent=2))
     elif args.command == 'export-archive':
         from .backup import export_archive
         export_archive(db, args.path)
