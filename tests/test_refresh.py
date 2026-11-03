@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,29 @@ class RefreshTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 store.submit_item_draft(db, note_id, '旧输入')
             self.assertEqual(db.execute('SELECT item_draft FROM notes WHERE id=?', (note_id,)).fetchone()[0], '其他输入')
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
+    def test_failed_save_is_visible_and_retried_without_losing_draft(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            window = next(iter(manager.windows.values()))
+            with patch('todo_notes.gui.store.update', side_effect=sqlite3.OperationalError('disk unavailable')):
+                window.title.setText('待保存标题')
+                window.body.setPlainText('待保存内容')
+                manager.refresh()
+                self.assertIn('保存失败', window.save_status.text())
+                self.assertEqual(window.title.text(), '待保存标题')
+                self.assertEqual(window.body.toPlainText(), '待保存内容')
+            manager.refresh()
+            row = db.execute('SELECT title, body FROM notes WHERE id=?', (window.id,)).fetchone()
+            self.assertEqual(tuple(row), ('待保存标题', '待保存内容'))
+            self.assertEqual(window.save_status.text(), '文字和草稿：已保存')
             manager.timer.stop()
             manager.watcher.removePaths(manager.watcher.files())
             window.close()

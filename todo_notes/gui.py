@@ -1,4 +1,5 @@
 import sys
+import sqlite3
 from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog
@@ -93,6 +94,7 @@ class Note(QWidget):
         self.manager, self.id = manager, row['id']
         self.loading = True
         self.item_history = []
+        self.pending_fields = {}
         self.setWindowTitle('Todo Note')
         self.setStyleSheet('QWidget { background: %s; }' % row['color'])
         layout = QVBoxLayout(self)
@@ -105,10 +107,12 @@ class Note(QWidget):
         self.items.itemChanged.connect(self.item_changed)
         layout.addWidget(self.items)
         self.item_input = QLineEdit(row['item_draft'])
-        self.item_input.textChanged.connect(lambda text: store.update(self.manager.db, self.id, item_draft=text) if not self.loading else None)
+        self.item_input.textChanged.connect(lambda text: self.save_field('item_draft', text))
         self.item_input.setPlaceholderText('输入清单项目，按回车添加')
         self.item_input.returnPressed.connect(self.add_item)
         layout.addWidget(self.item_input)
+        self.save_status = QLabel('文字和草稿：已保存')
+        layout.addWidget(self.save_status)
         self.calendar_status = QLabel()
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
@@ -130,8 +134,8 @@ class Note(QWidget):
             layout.addWidget(container)
             if group != actions[:3]:
                 self.secondary_bars.append(container)
-        self.title.textChanged.connect(lambda text: store.update(self.manager.db, self.id, title=text) if not self.loading else None)
-        self.body.textChanged.connect(lambda: store.update(self.manager.db, self.id, body=self.body.toPlainText()) if not self.loading else None)
+        self.title.textChanged.connect(lambda text: self.save_field('title', text))
+        self.body.textChanged.connect(lambda: self.save_field('body', self.body.toPlainText()))
         self.resize(row['width'], row['height'])
         if row['x'] is not None and row['y'] is not None:
             self.move(row['x'], row['y'])
@@ -141,6 +145,7 @@ class Note(QWidget):
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
         self.calendar_status.setVisible(not row['collapsed'])
+        self.save_status.setVisible(not row['collapsed'])
         for bar in self.secondary_bars:
             bar.setVisible(not row['collapsed'])
         self.collapse_button.setText('展开' if row['collapsed'] else '收起')
@@ -151,6 +156,24 @@ class Note(QWidget):
             self.ensure_visible()
         if row['collapsed']:
             QTimer.singleShot(0, self.adjustSize)
+
+    def save_field(self, key, value):
+        if self.loading:
+            return
+        self.pending_fields[key] = value
+        self.flush_pending()
+
+    def flush_pending(self):
+        if not self.pending_fields:
+            return
+        try:
+            store.update(self.manager.db, self.id, **self.pending_fields)
+        except (sqlite3.Error, ValueError):
+            self.manager.db.rollback()
+            self.save_status.setText('文字和草稿：保存失败，正在重试')
+        else:
+            self.pending_fields.clear()
+            self.save_status.setText('文字和草稿：已保存')
 
     def update_calendar_status(self, row):
         parts = []
@@ -299,6 +322,7 @@ class Note(QWidget):
         self.items.setVisible(visible)
         self.item_input.setVisible(visible)
         self.calendar_status.setVisible(visible)
+        self.save_status.setVisible(visible)
         for bar in self.secondary_bars:
             bar.setVisible(visible)
         self.collapse_button.setText('收起' if visible else '展开')
@@ -351,6 +375,8 @@ class Manager:
             self.screen_areas = areas
             for window in self.windows.values():
                 window.ensure_visible()
+        for window in self.windows.values():
+            window.flush_pending()
         rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0')}
         for note_id in set(self.windows) - set(rows):
             self.windows.pop(note_id).close()
@@ -361,15 +387,15 @@ class Manager:
                 window = self.windows[note_id]
                 window.sync_items()
                 window.update_calendar_status(row)
-                if not window.item_input.hasFocus() and window.item_input.text() != row['item_draft']:
+                if 'item_draft' not in window.pending_fields and not window.item_input.hasFocus() and window.item_input.text() != row['item_draft']:
                     window.item_input.blockSignals(True)
                     window.item_input.setText(row['item_draft'])
                     window.item_input.blockSignals(False)
-                if not window.title.hasFocus() and window.title.text() != row['title']:
+                if 'title' not in window.pending_fields and not window.title.hasFocus() and window.title.text() != row['title']:
                     window.title.blockSignals(True)
                     window.title.setText(row['title'])
                     window.title.blockSignals(False)
-                if not window.body.hasFocus() and window.body.toPlainText() != row['body']:
+                if 'body' not in window.pending_fields and not window.body.hasFocus() and window.body.toPlainText() != row['body']:
                     window.body.blockSignals(True)
                     window.body.setPlainText(row['body'])
                     window.body.blockSignals(False)
