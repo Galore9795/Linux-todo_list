@@ -31,6 +31,10 @@ def main():
         patch = ROOT / 'integrations/crosspet/1.3.8-linux-draft.patch'
         subprocess.run(['git', 'apply', '--exclude=tests/test_ui.py', '--exclude=tests/test_core.py', str(patch)], cwd=output, check=True)
         subprocess.run([sys.executable, str(ROOT / 'scripts/install-crosspet-menu.py'), '--crosspet', str(output)], check=True)
+        cursor_dir = output / 'integrations/cursor'
+        cursor_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / 'integrations/crosspet/cursor_bridge.py', cursor_dir / 'cursor_bridge.py')
+        shutil.copyfile(ROOT / 'integrations/crosspet/UPSTREAM-LICENSE', cursor_dir / 'LICENSE')
         manifest = output / 'tools_manifest.py'
         manifest.write_text(manifest.read_text().replace('1.3.7-linux.3', '1.3.8-linux.1'))
         metadata = output / 'UPSTREAM.md'

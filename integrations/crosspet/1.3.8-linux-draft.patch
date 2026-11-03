@@ -9,7 +9,24 @@
  POSES = ("idle", "listening", "thinking", "reading", "writing", "running",
           "searching", "drawing", "delegating", "compact", "asking", "happy",
           "proud", "oops", "pat", "sleeping", "stretch", "surprised")
-@@ -93,13 +93,15 @@
+@@ -67,7 +67,15 @@
+     if isinstance(ts, bool) or not isinstance(ts, (int, float)) or not math.isfinite(ts) or not 0 <= now - ts <= 120:
+         return None
+     # Persist only event names. Never retain prompts, arguments, or model output.
+-    return {"pose": value["pose"], "ts": ts}
++    result = {"pose": value["pose"], "ts": ts}
++    event = value.get("event")
++    if event in ("SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop", "PreCompact"):
++        result["event"] = event
++    after = value.get("after")
++    after_ts = value.get("afterTs")
++    if after in POSES and isinstance(after_ts, (int, float)) and not isinstance(after_ts, bool) and math.isfinite(after_ts) and 0 <= now - after_ts <= 120:
++        result.update(after=after, afterTs=after_ts)
++    return result
+ 
+ 
+ def pose_for_tool(name):
+@@ -93,13 +101,15 @@
      event = value.get("hook_event_name", value.get("event", ""))
      if not isinstance(event, str):
          return None
@@ -158,16 +175,29 @@
      def poll(self):
 --- a/crosspet/__main__.py
 +++ b/crosspet/__main__.py
-@@ -8,7 +8,7 @@
+@@ -7,8 +7,20 @@
+ from . import core
  
  
++def cursor_bridge_configured():
++    path = Path.home() / '.cursor/hooks.json'
++    try:
++        config = json.loads(path.read_text(encoding='utf-8-sig'))
++        hooks = config.get('hooks', {})
++        if not isinstance(hooks, dict):
++            return False
++        return any(isinstance(entry, dict) and any(marker in str(entry.get('command', '')) for marker in ('crosspet-cursor-bridge.py', 'crosspet_cursor_bridge.py', 'cursor_bridge.py')) for entries in hooks.values() if isinstance(entries, list) for entry in entries)
++    except (OSError, ValueError, TypeError, AttributeError):
++        return False
++
++
  def main():
 -    parser = argparse.ArgumentParser(description="CrossPet Linux · upstream 1.3.7")
 +    parser = argparse.ArgumentParser(description="CrossPet Linux · upstream 1.3.8")
      parser.add_argument("--event", choices=core.POSES, help="send a local state without opening a window")
      parser.add_argument("--character", choices=core.CHARACTERS, default="gpt")
      parser.add_argument("--hook", choices=core.CHARACTERS, help="read a hook JSON object from stdin")
-@@ -20,6 +20,11 @@
+@@ -20,13 +32,21 @@
      if args.event or args.hook:
          if args.event and args.hook:
              parser.error("--event and --hook cannot be combined")
@@ -179,6 +209,17 @@
          value = {"pose": args.event, "ts": time.time()}
          if args.hook:
              try:
+                 data = sys.stdin.buffer.read(1048577)
+                 if len(data) > 1048576:
+                     raise ValueError("hook input exceeds 1 MiB")
+-                value = core.hook_state(json.loads(data))
++                event = json.loads(data)
++                if isinstance(event, dict) and event.get('cursor_version') and cursor_bridge_configured():
++                    return 0
++                value = core.hook_state(event)
+             except (ValueError, UnicodeError) as error:
+                 parser.exit(2, f"Invalid hook JSON: {error}\n")
+         if value:
 --- a/tests/test_ui.py
 +++ b/tests/test_ui.py
 @@ -66,6 +66,26 @@
@@ -226,10 +267,16 @@
          self.pet.panels['devconsole'][0].close()
 --- a/tests/test_core.py
 +++ b/tests/test_core.py
-@@ -27,6 +27,14 @@
+@@ -27,6 +27,20 @@
          for bad in (None, [], {}, {"payload": None}, {**record(), "timestamp": 43}):
              self.assertIsNone(core.state_from_record(bad))
  
++    def test_cursor_state_keeps_safe_animation_metadata_only(self):
++        state = core.valid_state({'pose': 'thinking', 'ts': 100, 'event': 'PostToolUse', 'after': 'writing', 'afterTs': 99, 'prompt': 'PRIVATE'}, 100)
++        self.assertEqual(state, {'pose': 'thinking', 'ts': 100, 'event': 'PostToolUse', 'after': 'writing', 'afterTs': 99})
++        invalid = core.valid_state({'pose': 'thinking', 'ts': 100, 'event': 'PRIVATE', 'after': 'PRIVATE', 'afterTs': 99}, 100)
++        self.assertEqual(invalid, {'pose': 'thinking', 'ts': 100})
++
 +    def test_grok_events_keep_private_content_out(self):
 +        from unittest.mock import patch
 +        with patch.dict(os.environ, {'GROK_HOOK_EVENT': '1'}):
