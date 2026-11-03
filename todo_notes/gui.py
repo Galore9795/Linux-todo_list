@@ -28,12 +28,14 @@ class Note(QWidget):
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
         self.update_calendar_status(row)
-        bar = QHBoxLayout()
-        for label, callback in [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]:
-            button = QPushButton(label)
-            button.clicked.connect(callback)
-            bar.addWidget(button)
-        layout.addLayout(bar)
+        actions = [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]
+        for group in (actions[:3], actions[3:]):
+            bar = QHBoxLayout()
+            for label, callback in group:
+                button = QPushButton(label)
+                button.clicked.connect(callback)
+                bar.addWidget(button)
+            layout.addLayout(bar)
         self.title.textChanged.connect(lambda text: store.update(self.manager.db, self.id, title=text) if not self.loading else None)
         self.body.textChanged.connect(lambda: store.update(self.manager.db, self.id, body=self.body.toPlainText()) if not self.loading else None)
         self.resize(row['width'], row['height'])
