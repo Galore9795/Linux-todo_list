@@ -74,6 +74,26 @@ class RefreshTest(unittest.TestCase):
             window.close()
             db.close()
 
+    def test_external_write_wakes_gui_without_polling(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            manager.timer.stop()
+            app.processEvents()
+            before = set(manager.windows)
+            subprocess.run([sys.executable, '-m', 'todo_notes', 'add', 'from another project'], check=True, capture_output=True)
+            loop = QEventLoop()
+            manager.watcher.fileChanged.connect(loop.quit)
+            QTimer.singleShot(1000, loop.quit)
+            loop.exec()
+            self.assertEqual(len(set(manager.windows) - before), 1)
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
     def test_prompt_signal_refreshes_without_saving_prompt(self):
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):

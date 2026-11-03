@@ -23,6 +23,15 @@ def connect():
     return db
 
 
+
+def notify_change():
+    """Wake an open GUI after a committed write; the database remains authoritative."""
+    root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
+    try:
+        (root / 'refresh.signal').touch()
+    except OSError:
+        pass  # The normal polling fallback still notices committed changes.
+
 def create(db, title='', body='', source='', source_file=None):
     import random
     import shutil
@@ -46,6 +55,7 @@ def create(db, title='', body='', source='', source_file=None):
     try:
         cursor = db.execute('INSERT INTO notes (title, body, color, source, source_file) VALUES (?, ?, ?, ?, ?)', (title, body, color, source, str(copied) if copied else None))
         db.commit()
+        notify_change()
         return cursor.lastrowid
     except Exception:
         db.rollback()
@@ -68,6 +78,7 @@ def update(db, note_id, **fields):
     if cursor.rowcount != 1:
         raise ValueError('note not found')
     db.commit()
+    notify_change()
 
 
 def add_item(db, note_id, text):
@@ -75,6 +86,7 @@ def add_item(db, note_id, text):
         raise ValueError('note not found')
     cursor = db.execute('INSERT INTO items (note_id, text) VALUES (?, ?)', (note_id, text))
     db.commit()
+    notify_change()
     return cursor.lastrowid
 
 
@@ -90,6 +102,7 @@ def update_item(db, item_id, *, text=None, done=None):
     if cursor.rowcount != 1:
         raise ValueError('item not found')
     db.commit()
+    notify_change()
 
 
 def delete_item(db, item_id):
@@ -101,6 +114,7 @@ def set_item_deleted(db, item_id, deleted):
     if cursor.rowcount != 1:
         raise ValueError('item not found')
     db.commit()
+    notify_change()
 
 
 def record_calendar_write(db, note_id, *, success, calendar_id=None, event_id=None):
@@ -113,6 +127,7 @@ def record_calendar_write(db, note_id, *, success, calendar_id=None, event_id=No
     if cursor.rowcount != 1:
         raise ValueError('note not found')
     db.commit()
+    notify_change()
 
 
 def record_calendar_check(db, note_id, *, success):
@@ -124,10 +139,13 @@ def record_calendar_check(db, note_id, *, success):
     if cursor.rowcount != 1:
         raise ValueError('note not found')
     db.commit()
+    notify_change()
 
 
 def undo_item_change(db, item_id, before, after):
     """Restore a previous state only if no other writer changed this item."""
     cursor = db.execute('UPDATE items SET text=?, done=?, deleted=? WHERE id=? AND text=? AND done=? AND deleted=?', (*before, item_id, *after))
     db.commit()
+    if cursor.rowcount:
+        notify_change()
     return cursor.rowcount == 1
