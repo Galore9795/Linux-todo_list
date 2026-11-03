@@ -54,3 +54,5 @@
 时间与日历记录：`update ID --reminder-at ISO时间 --start-at ISO时间 --end-at ISO时间 --due-at ISO时间` 分别保存提醒、执行开始和结束、截止时间，时间须带时区偏移，空字符串可清除。便签显示这些时间、上次核对时间及写入状态。`calendar-check ID success|failed` 和 `calendar-write ID success|failed` 只记录实际日历操作的结果，不会访问日历；成功写入时须提供 `--calendar-id` 和 `--event-id`。失败保留已有事件关联和上次成功核对时间。聊天端日历实际读写流程仍需验证。
 
 桌面菜单：`python3 scripts/install-ding-menu.py` 在用户目录复制当前系统 DING 并加入“新建便签”，不修改系统文件；GNOME 会话重新登录后才加载该副本。该副本不会自动跟随系统 DING 更新；撤销时删除 `~/.local/share/gnome-shell/extensions/ding@rastersoft.com` 并重新登录。安装脚本不会覆盖已有用户版 DING。入口通过 `linux-todo-notes new` 创建便签并启动应用（已有实例时由其刷新）。本机已安装用户副本，尚未重新登录验证菜单。
+
+对话刷新信号：`scripts/prompt-refresh.py` 只触碰本地空信号文件，不读取或保存对话内容；运行中的便签监听信号并刷新，同时保留定时检查。支持的 Codex 环境可将此脚本配置为 `UserPromptSubmit` 命令钩子。按照 [OpenAI 钩子文档](https://learn.chatgpt.com/docs/hooks)，用户级非托管钩子需要在 `/hooks` 中审阅并信任；为遵守不打扰的要求，目前没有自动修改用户钩子配置或触发信任提示。普通 Chat 的自动触发未验证。

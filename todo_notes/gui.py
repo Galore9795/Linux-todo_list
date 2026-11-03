@@ -1,5 +1,5 @@
 import sys
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel
 from . import store
 
@@ -155,6 +155,12 @@ class Manager:
         if not db.execute('SELECT 1 FROM notes WHERE deleted=0').fetchone():
             store.create(db)
         self.refresh()
+        import os
+        from pathlib import Path
+        signal = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes' / 'refresh.signal'
+        signal.touch(exist_ok=True)
+        self.watcher = QFileSystemWatcher([str(signal)])
+        self.watcher.fileChanged.connect(self.refresh)
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh)
         self.timer.start(700)
