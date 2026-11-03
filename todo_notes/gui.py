@@ -30,14 +30,20 @@ class Note(QWidget):
         self.update_calendar_status(row)
         actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]
         for group in (actions[:3], actions[3:]):
-            bar = QHBoxLayout()
+            container = QWidget()
+            bar = QHBoxLayout(container)
+            bar.setContentsMargins(0, 0, 0, 0)
             for label, callback in group:
                 button = QPushButton(label)
                 button.clicked.connect(callback)
                 if callback == self.pin:
                     self.pin_button = button
+                elif callback == self.collapse:
+                    self.collapse_button = button
                 bar.addWidget(button)
-            layout.addLayout(bar)
+            layout.addWidget(container)
+            if group == actions[3:]:
+                self.secondary_bar = container
         self.title.textChanged.connect(lambda text: store.update(self.manager.db, self.id, title=text) if not self.loading else None)
         self.body.textChanged.connect(lambda: store.update(self.manager.db, self.id, body=self.body.toPlainText()) if not self.loading else None)
         self.resize(row['width'], row['height'])
@@ -49,9 +55,13 @@ class Note(QWidget):
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
         self.calendar_status.setVisible(not row['collapsed'])
+        self.secondary_bar.setVisible(not row['collapsed'])
+        self.collapse_button.setText('展开' if row['collapsed'] else '收起')
         self.sync_items()
         self.loading = False
         self.show()
+        if row['collapsed']:
+            QTimer.singleShot(0, self.adjustSize)
 
     def update_calendar_status(self, row):
         parts = []
@@ -140,13 +150,21 @@ class Note(QWidget):
         self.show()
 
     def collapse(self):
+        self.loading = True
         visible = not self.body.isVisible()
         self.body.setVisible(visible)
         self.items.setVisible(visible)
         self.item_input.setVisible(visible)
         self.calendar_status.setVisible(visible)
+        self.secondary_bar.setVisible(visible)
+        self.collapse_button.setText('收起' if visible else '展开')
         store.update(self.manager.db, self.id, collapsed=int(not visible))
-        self.adjustSize()
+        if visible:
+            row = self.manager.db.execute('SELECT width, height FROM notes WHERE id=?', (self.id,)).fetchone()
+            self.resize(row['width'], row['height'])
+        else:
+            self.adjustSize()
+        self.loading = False
 
     def delete(self):
         store.update(self.manager.db, self.id, deleted=1)

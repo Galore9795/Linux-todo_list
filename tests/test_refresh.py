@@ -14,6 +14,39 @@ from todo_notes.gui import Manager
 
 
 class RefreshTest(unittest.TestCase):
+    def test_collapse_restores_size_and_survives_restart(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            window = next(iter(manager.windows.values()))
+            window.resize(420, 400)
+            app.processEvents()
+            note_id = window.id
+            window.collapse()
+            app.processEvents()
+            self.assertTrue(window.body.isHidden())
+            self.assertLess(window.height(), 200)
+            self.assertEqual(window.collapse_button.text(), '展开')
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+            db = store.connect()
+            manager = Manager(db)
+            app.processEvents()
+            window = manager.windows[note_id]
+            self.assertTrue(window.body.isHidden())
+            window.collapse()
+            app.processEvents()
+            self.assertEqual((window.width(), window.height()), (420, 400))
+            self.assertFalse(window.body.isHidden())
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
     def test_prompt_signal_refreshes_without_saving_prompt(self):
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
