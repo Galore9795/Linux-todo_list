@@ -20,7 +20,7 @@ import os, shlex
 from pathlib import Path
 root = shlex.quote(os.environ['ROOT_PATH'])
 path = Path(os.environ['LAUNCHER_PATH'])
-path.write_text('#!/bin/sh\nexport PYTHONPATH=' + root + '${PYTHONPATH:+:"$PYTHONPATH"}\nexec python3 -m todo_notes "$@"\n')
+path.write_text('#!/bin/sh\nexport PYTHONPATH=' + root + '${PYTHONPATH:+:"$PYTHONPATH"}\nif [ "$#" -eq 0 ]; then set -- open; fi\nexec python3 -m todo_notes "$@"\n')
 path.chmod(0o755)
 PY
 ln -s "$root/skills/linux-todo-notes" "$skill"

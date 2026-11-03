@@ -7,6 +7,8 @@ from . import store
 def main():
     parser = argparse.ArgumentParser(description='Linux desktop notes')
     sub = parser.add_subparsers(dest='command')
+    sub.add_parser('open', help='open notes independently of Crosspet')
+    sub.add_parser('gui', help='run the notes GUI in the current process')
     sub.add_parser('new', help='create a blank note and start the app if needed')
     add = sub.add_parser('add')
     add.add_argument('title')
@@ -52,7 +54,9 @@ def main():
     archive.add_argument('path')
     args = parser.parse_args()
     db = store.connect()
-    if args.command == 'new':
+    if args.command == 'open':
+        open_independent(db)
+    elif args.command == 'new':
         store.create(db)
         launch(db)
     elif args.command == 'add':
@@ -88,6 +92,25 @@ def main():
         store.set_item_deleted(db, args.id, False)
     else:
         launch(db)
+
+def open_independent(db):
+    import os
+    import subprocess
+    unit = os.environ.get('TODO_NOTES_UNIT', 'linux-todo-notes.service')
+    command = ['systemd-run', '--user', '--quiet', '--collect', '--unit=' + unit]
+    for name in ('DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_DATA_HOME', 'PYTHONPATH'):
+        if name in os.environ:
+            command.append('--setenv=' + name + '=' + os.environ[name])
+    command += [sys.executable, '-m', 'todo_notes', 'gui']
+    try:
+        result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        if result.returncode == 0:
+            return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # Already running or a user service manager is unavailable.
+    launch(db)
+
 
 def launch(db):
     import fcntl

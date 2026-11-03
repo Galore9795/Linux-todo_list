@@ -36,6 +36,17 @@ class NotesTest(unittest.TestCase):
         self.assertEqual((row['source'], row['x'], row['pinned'], row['deleted']), ('original', 10, 1, 0))
         self.assertEqual(self.db.execute('SELECT done FROM items WHERE id=?', (item,)).fetchone()[0], 1)
 
+    def test_independent_open_uses_service_and_falls_back(self):
+        from unittest.mock import Mock
+        from todo_notes.__main__ import open_independent
+        with patch('subprocess.run', return_value=Mock(returncode=0)) as run, patch('todo_notes.__main__.launch') as launch:
+            open_independent(self.db)
+            self.assertIn('systemd-run', run.call_args.args[0])
+            launch.assert_not_called()
+        with patch('subprocess.run', return_value=Mock(returncode=1)), patch('todo_notes.__main__.launch') as launch:
+            open_independent(self.db)
+            launch.assert_called_once_with(self.db)
+
     def test_archive_contains_deleted_notes_drafts_and_sources(self):
         original = Path(self.tmp.name) / 'source.png'
         original.write_bytes(b'image bytes')
