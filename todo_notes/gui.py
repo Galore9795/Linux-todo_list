@@ -77,7 +77,8 @@ class Note(QWidget):
         self.items = QListWidget()
         self.items.itemChanged.connect(self.item_changed)
         layout.addWidget(self.items)
-        self.item_input = QLineEdit()
+        self.item_input = QLineEdit(row['item_draft'])
+        self.item_input.textChanged.connect(lambda text: store.update(self.manager.db, self.id, item_draft=text) if not self.loading else None)
         self.item_input.setPlaceholderText('输入清单项目，按回车添加')
         self.item_input.returnPressed.connect(self.add_item)
         layout.addWidget(self.item_input)
@@ -185,9 +186,15 @@ class Note(QWidget):
     def add_item(self):
         text = self.item_input.text().strip()
         if text:
-            item_id = store.add_item(self.manager.db, self.id, text)
+            try:
+                item_id = store.submit_item_draft(self.manager.db, self.id, self.item_input.text())
+            except ValueError:
+                self.calendar_status.setText('草稿已在其他入口修改，请先检查')
+                return
             self.item_history.append((item_id, (text, 0, 1), (text, 0, 0)))
+            self.item_input.blockSignals(True)
             self.item_input.clear()
+            self.item_input.blockSignals(False)
             self.sync_items()
 
     def delete_item(self):
@@ -290,6 +297,10 @@ class Manager:
                 window = self.windows[note_id]
                 window.sync_items()
                 window.update_calendar_status(row)
+                if not window.item_input.hasFocus() and window.item_input.text() != row['item_draft']:
+                    window.item_input.blockSignals(True)
+                    window.item_input.setText(row['item_draft'])
+                    window.item_input.blockSignals(False)
                 if not window.title.hasFocus() and window.title.text() != row['title']:
                     window.title.blockSignals(True)
                     window.title.setText(row['title'])

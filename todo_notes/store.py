@@ -16,7 +16,7 @@ def connect():
     for name in ('reminder_at', 'start_at', 'end_at', 'due_at', 'calendar_id', 'event_id', 'calendar_checked_at', 'source_file'):
         if name not in columns:
             db.execute(f'ALTER TABLE notes ADD COLUMN {name} TEXT')
-    for name, default in (('calendar_write_status', 'not_scheduled'), ('calendar_check_status', 'never')):
+    for name, default in (('calendar_write_status', 'not_scheduled'), ('calendar_check_status', 'never'), ('item_draft', '')):
         if name not in columns:
             db.execute(f"ALTER TABLE notes ADD COLUMN {name} TEXT NOT NULL DEFAULT '{default}'")
     db.commit()
@@ -65,7 +65,7 @@ def create(db, title='', body='', source='', source_file=None):
 
 
 def update(db, note_id, **fields):
-    allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at'}
+    allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at', 'item_draft'}
     if not fields or not fields.keys() <= allowed:
         raise ValueError('invalid fields')
     from datetime import datetime
@@ -89,6 +89,25 @@ def add_item(db, note_id, text):
     notify_change()
     return cursor.lastrowid
 
+
+
+def submit_item_draft(db, note_id, draft):
+    text = draft.strip()
+    if not text:
+        raise ValueError('empty draft')
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT item_draft, deleted FROM notes WHERE id=?', (note_id,)).fetchone()
+        if row is None or row['deleted'] or row['item_draft'] != draft:
+            raise ValueError('draft changed or note deleted')
+        cursor = db.execute('INSERT INTO items (note_id, text) VALUES (?, ?)', (note_id, text))
+        db.execute("UPDATE notes SET item_draft='' WHERE id=?", (note_id,))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    notify_change()
+    return cursor.lastrowid
 
 def update_item(db, item_id, *, text=None, done=None):
     fields = {}

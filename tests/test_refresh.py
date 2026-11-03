@@ -47,6 +47,35 @@ class RefreshTest(unittest.TestCase):
             window.close()
             db.close()
 
+    def test_item_draft_survives_restart_and_submission_is_atomic(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            window = next(iter(manager.windows.values()))
+            note_id = window.id
+            window.item_input.setText('尚未完成的输入')
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+            db = store.connect()
+            manager = Manager(db)
+            window = manager.windows[note_id]
+            self.assertEqual(window.item_input.text(), '尚未完成的输入')
+            window.add_item()
+            self.assertEqual(db.execute('SELECT item_draft FROM notes WHERE id=?', (note_id,)).fetchone()[0], '')
+            self.assertEqual(db.execute('SELECT text FROM items WHERE note_id=?', (note_id,)).fetchone()[0], '尚未完成的输入')
+            store.update(db, note_id, item_draft='其他输入')
+            with self.assertRaises(ValueError):
+                store.submit_item_draft(db, note_id, '旧输入')
+            self.assertEqual(db.execute('SELECT item_draft FROM notes WHERE id=?', (note_id,)).fetchone()[0], '其他输入')
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
     def test_schedule_edit_validates_and_preserves_external_updates(self):
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
