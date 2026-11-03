@@ -77,6 +77,7 @@ def launch(db):
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        (root / 'show.signal').touch()
         return
     from .gui import run
     run(db)

@@ -280,11 +280,22 @@ class Manager:
         from pathlib import Path
         signal = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes' / 'refresh.signal'
         signal.touch(exist_ok=True)
-        self.watcher = QFileSystemWatcher([str(signal)])
-        self.watcher.fileChanged.connect(self.refresh)
+        show_signal = signal.with_name('show.signal')
+        show_signal.touch(exist_ok=True)
+        self.show_signal = str(show_signal)
+        self.watcher = QFileSystemWatcher([str(signal), self.show_signal])
+        self.watcher.fileChanged.connect(self.on_signal)
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh)
         self.timer.start(700)
+
+    def on_signal(self, path):
+        self.refresh()
+        if path == self.show_signal:
+            for window in self.windows.values():
+                window.showNormal()
+                window.raise_()
+                window.activateWindow()
 
     def refresh(self):
         rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0')}

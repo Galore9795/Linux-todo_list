@@ -128,6 +128,30 @@ class RefreshTest(unittest.TestCase):
             window.close()
             db.close()
 
+    def test_launch_again_reopens_hidden_notes(self):
+        import fcntl
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            manager.timer.stop()
+            window = next(iter(manager.windows.values()))
+            window.hide()
+            lock_path = Path(root) / 'linux-todo-notes' / 'app.lock'
+            with lock_path.open('w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                app.processEvents()
+                subprocess.run([sys.executable, '-m', 'todo_notes'], check=True, capture_output=True)
+                loop = QEventLoop()
+                manager.watcher.fileChanged.connect(loop.quit)
+                QTimer.singleShot(1000, loop.quit)
+                loop.exec()
+                self.assertTrue(window.isVisible())
+            manager.watcher.removePaths(manager.watcher.files())
+            window.close()
+            db.close()
+
     def test_external_write_wakes_gui_without_polling(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
