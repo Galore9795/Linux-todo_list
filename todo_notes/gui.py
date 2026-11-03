@@ -9,6 +9,7 @@ class Note(QWidget):
         super().__init__()
         self.manager, self.id = manager, row['id']
         self.loading = True
+        self.item_history = []
         self.setWindowTitle('Todo Note')
         self.setStyleSheet('QWidget { background: %s; }' % row['color'])
         layout = QVBoxLayout(self)
@@ -28,7 +29,7 @@ class Note(QWidget):
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
         self.update_calendar_status(row)
-        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]
+        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('撤销', self.undo_item), ('恢复', self.restore), ('删除', self.delete)]
         for group in (actions[:3], actions[3:]):
             container = QWidget()
             bar = QHBoxLayout(container)
@@ -95,20 +96,45 @@ class Note(QWidget):
             self.items.addItem(item)
         self.items.blockSignals(False)
 
+    def item_state(self, item_id):
+        row = self.manager.db.execute('SELECT text, done, deleted FROM items WHERE id=?', (item_id,)).fetchone()
+        return tuple(row) if row else None
+
     def item_changed(self, item):
-        store.update_item(self.manager.db, item.data(Qt.ItemDataRole.UserRole), text=item.text(), done=item.checkState() == Qt.CheckState.Checked)
+        item_id = item.data(Qt.ItemDataRole.UserRole)
+        before = self.item_state(item_id)
+        if before is None:
+            return
+        after = (item.text(), int(item.checkState() == Qt.CheckState.Checked), before[2])
+        if before != after:
+            store.update_item(self.manager.db, item_id, text=after[0], done=after[1])
+            self.item_history.append((item_id, before, after))
+
+    def undo_item(self):
+        if not self.item_history:
+            return
+        item_id, before, after = self.item_history.pop()
+        if not store.undo_item_change(self.manager.db, item_id, before, after):
+            self.calendar_status.setText('该项目已在其他入口修改，未撤销')
+            QTimer.singleShot(4000, self.manager.refresh)
+        self.sync_items()
 
     def add_item(self):
         text = self.item_input.text().strip()
         if text:
-            store.add_item(self.manager.db, self.id, text)
+            item_id = store.add_item(self.manager.db, self.id, text)
+            self.item_history.append((item_id, (text, 0, 1), (text, 0, 0)))
             self.item_input.clear()
             self.sync_items()
 
     def delete_item(self):
         item = self.items.currentItem()
         if item:
-            store.delete_item(self.manager.db, item.data(Qt.ItemDataRole.UserRole))
+            item_id = item.data(Qt.ItemDataRole.UserRole)
+            before = self.item_state(item_id)
+            if before:
+                store.delete_item(self.manager.db, item_id)
+                self.item_history.append((item_id, before, (before[0], before[1], 1)))
             self.sync_items()
 
     def restore(self):

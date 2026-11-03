@@ -124,3 +124,10 @@ def record_calendar_check(db, note_id, *, success):
     if cursor.rowcount != 1:
         raise ValueError('note not found')
     db.commit()
+
+
+def undo_item_change(db, item_id, before, after):
+    """Restore a previous state only if no other writer changed this item."""
+    cursor = db.execute('UPDATE items SET text=?, done=?, deleted=? WHERE id=? AND text=? AND done=? AND deleted=?', (*before, item_id, *after))
+    db.commit()
+    return cursor.rowcount == 1
