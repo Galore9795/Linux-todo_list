@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem
 from . import store
 
 
@@ -17,25 +17,63 @@ class Note(QWidget):
         self.body.setPlaceholderText('描述或清单（支持 Ctrl+Z 撤销）')
         layout.addWidget(self.title)
         layout.addWidget(self.body)
+        self.items = QListWidget()
+        self.items.itemChanged.connect(self.item_changed)
+        layout.addWidget(self.items)
+        self.item_input = QLineEdit()
+        self.item_input.setPlaceholderText('输入清单项目，按回车添加')
+        self.item_input.returnPressed.connect(self.add_item)
+        layout.addWidget(self.item_input)
         bar = QHBoxLayout()
-        for label, callback in [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除', self.delete)]:
+        for label, callback in [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('删除', self.delete)]:
             button = QPushButton(label)
             button.clicked.connect(callback)
             bar.addWidget(button)
         layout.addLayout(bar)
-        self.title.textChanged.connect(self.save_text)
-        self.body.textChanged.connect(self.save_text)
+        self.title.textChanged.connect(lambda text: store.update(self.manager.db, self.id, title=text) if not self.loading else None)
+        self.body.textChanged.connect(lambda: store.update(self.manager.db, self.id, body=self.body.toPlainText()) if not self.loading else None)
         self.resize(row['width'], row['height'])
         if row['x'] is not None and row['y'] is not None:
             self.move(row['x'], row['y'])
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, bool(row['pinned']))
         self.body.setVisible(not row['collapsed'])
+        self.items.setVisible(not row['collapsed'])
+        self.item_input.setVisible(not row['collapsed'])
+        self.sync_items()
         self.loading = False
         self.show()
 
-    def save_text(self):
-        if not self.loading:
-            store.update(self.manager.db, self.id, title=self.title.text(), body=self.body.toPlainText())
+    def sync_items(self):
+        rows = self.manager.db.execute('SELECT * FROM items WHERE note_id=? ORDER BY id', (self.id,)).fetchall()
+        current = [(self.items.item(i).data(Qt.ItemDataRole.UserRole), self.items.item(i).text(), self.items.item(i).checkState() == Qt.CheckState.Checked) for i in range(self.items.count())]
+        desired = [(r['id'], r['text'], bool(r['done'])) for r in rows]
+        if current == desired or self.items.state() == QListWidget.State.EditingState:
+            return
+        self.items.blockSignals(True)
+        self.items.clear()
+        for item_id, text, done in desired:
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, item_id)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked)
+            self.items.addItem(item)
+        self.items.blockSignals(False)
+
+    def item_changed(self, item):
+        store.update_item(self.manager.db, item.data(Qt.ItemDataRole.UserRole), text=item.text(), done=item.checkState() == Qt.CheckState.Checked)
+
+    def add_item(self):
+        text = self.item_input.text().strip()
+        if text:
+            store.add_item(self.manager.db, self.id, text)
+            self.item_input.clear()
+            self.sync_items()
+
+    def delete_item(self):
+        item = self.items.currentItem()
+        if item:
+            store.delete_item(self.manager.db, item.data(Qt.ItemDataRole.UserRole))
+            self.sync_items()
 
     def moveEvent(self, event):
         if not self.loading:
@@ -60,6 +98,8 @@ class Note(QWidget):
     def collapse(self):
         visible = not self.body.isVisible()
         self.body.setVisible(visible)
+        self.items.setVisible(visible)
+        self.item_input.setVisible(visible)
         store.update(self.manager.db, self.id, collapsed=int(not visible))
         self.adjustSize()
 
@@ -87,10 +127,15 @@ class Manager:
                 self.windows[note_id] = Note(self, row)
             else:
                 window = self.windows[note_id]
+                window.sync_items()
                 if not window.title.hasFocus() and window.title.text() != row['title']:
+                    window.title.blockSignals(True)
                     window.title.setText(row['title'])
+                    window.title.blockSignals(False)
                 if not window.body.hasFocus() and window.body.toPlainText() != row['body']:
+                    window.body.blockSignals(True)
                     window.body.setPlainText(row['body'])
+                    window.body.blockSignals(False)
 
 
 def run(db):

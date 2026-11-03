@@ -42,3 +42,5 @@
 已建立实验性 PyQt6 便签和 SQLite 存储，尚未达到上面的完整交付范围。安装 PyQt6 后，在仓库目录运行 `python3 -m todo_notes`。用 `python3 -m todo_notes add '标题' --body '内容' --source '原文'` 添加，`python3 -m todo_notes list` 查看，`python3 -m todo_notes update ID --deleted 0` 恢复删除，`python3 -m todo_notes export` 导出 JSON。数据位于 `$XDG_DATA_HOME/linux-todo-notes`（默认 `~/.local/share/linux-todo-notes`）。
 
 已做命令添加和 Qt 离屏启动检查；尚未完成桌面实际验收。清单勾选、桌面右键、跨聊天安装及日历安排等仍待实现。
+
+清单：在便签中输入项目并按回车添加，勾选完成，双击文字编辑；选中项目后可删除。命令行可使用 `python3 -m todo_notes item-add 便签ID '项目'`、`python3 -m todo_notes item-update 项目ID --done 1`；列表与导出包含项目 ID 和完成状态。自动化检查：`python3 -m unittest discover -s tests -v`。

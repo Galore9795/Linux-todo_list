@@ -17,6 +17,13 @@ def main():
     edit.add_argument('--title')
     edit.add_argument('--body')
     edit.add_argument('--deleted', type=int, choices=[0, 1])
+    item = sub.add_parser('item-add')
+    item.add_argument('id', type=int)
+    item.add_argument('text')
+    done = sub.add_parser('item-update')
+    done.add_argument('id', type=int)
+    done.add_argument('--text')
+    done.add_argument('--done', type=int, choices=[0, 1])
     sub.add_parser('export')
     args = parser.parse_args()
     db = store.connect()
@@ -24,10 +31,17 @@ def main():
         print(store.create(db, args.title, args.body, args.source))
     elif args.command in ('list', 'export'):
         rows = db.execute('SELECT * FROM notes' + ('' if args.command == 'export' or args.all else ' WHERE deleted=0')).fetchall()
-        print(json.dumps([dict(r) for r in rows], ensure_ascii=False, indent=2))
+        notes = [dict(r) for r in rows]
+        for note in notes:
+            note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=? ORDER BY id', (note['id'],))]
+        print(json.dumps(notes, ensure_ascii=False, indent=2))
     elif args.command == 'update':
         fields = {k: v for k, v in vars(args).items() if k in ('title', 'body', 'deleted') and v is not None}
         store.update(db, args.id, **fields)
+    elif args.command == 'item-add':
+        print(store.add_item(db, args.id, args.text))
+    elif args.command == 'item-update':
+        store.update_item(db, args.id, text=args.text, done=args.done)
     else:
         from .gui import run
         run(db)
