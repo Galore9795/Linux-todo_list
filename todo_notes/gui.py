@@ -28,12 +28,14 @@ class Note(QWidget):
         self.calendar_status.setWordWrap(True)
         layout.addWidget(self.calendar_status)
         self.update_calendar_status(row)
-        actions = [('＋', self.new), ('📌', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]
+        actions = [('＋', self.new), ('置顶', self.pin), ('收起', self.collapse), ('删除项目', self.delete_item), ('恢复', self.restore), ('删除', self.delete)]
         for group in (actions[:3], actions[3:]):
             bar = QHBoxLayout()
             for label, callback in group:
                 button = QPushButton(label)
                 button.clicked.connect(callback)
+                if callback == self.pin:
+                    self.pin_button = button
                 bar.addWidget(button)
             layout.addLayout(bar)
         self.title.textChanged.connect(lambda text: store.update(self.manager.db, self.id, title=text) if not self.loading else None)
@@ -42,6 +44,7 @@ class Note(QWidget):
         if row['x'] is not None and row['y'] is not None:
             self.move(row['x'], row['y'])
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, bool(row['pinned']))
+        self.pin_button.setText('取消置顶' if row['pinned'] else '置顶')
         self.body.setVisible(not row['collapsed'])
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
@@ -133,6 +136,7 @@ class Note(QWidget):
         pinned = not bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
         store.update(self.manager.db, self.id, pinned=int(pinned))
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, pinned)
+        self.pin_button.setText('取消置顶' if pinned else '置顶')
         self.show()
 
     def collapse(self):

@@ -20,7 +20,34 @@
  AGENT_DESKTOPS = {
      'gpt':('chatgpt.desktop',),
      'claude':('claude.desktop','claude-desktop.desktop','anthropic-claude.desktop'),
-@@ -684,12 +684,14 @@
+@@ -129,7 +129,7 @@
+                 self.settings.setdefault(new, self.settings[old])
+         self.defaults = dict(size=1., textSize=1., textLinked=True, showName=True, aura='auto', eggs=True,
+                              followEvents=True, followApps=True, hideFullscreen=True, edgeDock=True, powerSave=False, quotaAggregate=False,
+-                             peakStyle='bar', gptQuota=True, dsQuota=True, codex_activity=True, layer='top',
++                             peakStyle='bar', quotaStyle='text', gptQuota=True, dsQuota=True, codex_activity=True, layer='top',
+                              menuReduceTransparency=False, menuReduceMotion=False, menuHighContrast=False)
+         self.settings = {**self.defaults, **self.settings}
+         self.scale = self.number(self.settings['size'])
+@@ -239,7 +239,7 @@
+         self.js(';'.join([js_call('setSizes',self.scale,s['textSize'],s['textLinked']),
+                           js_call('setShowName',s['showName']), js_call('setAuraMode',s['aura']),
+                           js_call('setPowerSave',s['powerSave']), js_call('setEggsEnabled',s['eggs']),
+-                          js_call('setQuotaAggregate',s['quotaAggregate']), js_call('setPeakStyle',s['peakStyle']),
++                          js_call('setQuotaAggregate',s['quotaAggregate']), js_call('setQuotaStyle',s['quotaStyle']), js_call('setPeakStyle',s['peakStyle']),
+                           js_call('setPeakSkins',s.get('peakSkins',{}))]))
+         self.timer.setInterval(250 if s['powerSave'] else 150)
+         self.apply_layer()
+@@ -641,6 +641,8 @@
+             return
+         elif key=='peakStyle' and value not in ('bar','text','off'):
+             return
++        elif key=='quotaStyle' and value not in ('text','bars'):
++            return
+         elif key=='layer' and value not in ('top','follow','normal'):
+             return
+         elif key=='peakSkins':
+@@ -684,12 +686,14 @@
          chars = []
          for character in core.CHARACTERS:
              c = self.characters[character]
@@ -38,7 +65,7 @@
                  'integrations':[], 'gptQuotaNote':'读取本机 Codex 会话日志中的额度；保留最后记录并标注时间，过期不推算为满额。'}
  
      def open_panel(self,kind,tab=None):
-@@ -706,7 +708,7 @@
+@@ -706,7 +710,7 @@
                  view.page().runJavaScript(js_call('showTab',tab))
              return
          window = PanelWindow(lambda:self.close_panel(kind))
@@ -47,7 +74,7 @@
          window.resize(680 if kind=='settings' else 1040,650 if kind=='settings' else 780)
          layout = QVBoxLayout(window); layout.setContentsMargins(0,0,0,0)
          status = QLabel('正在加载…', window)
-@@ -740,7 +742,7 @@
+@@ -740,7 +744,7 @@
              if not ok:
                  failed('页面加载失败，请点击重新加载。')
                  return
@@ -56,7 +83,7 @@
              def ready(ok):
                  if not current():
                      return
-@@ -806,16 +808,20 @@
+@@ -806,16 +810,20 @@
              self.push_settings()
              if tab:
                  page.runJavaScript(js_call('showTab',tab))
@@ -80,7 +107,7 @@
              if cmd=='get':
                  self.push_settings()
              elif cmd=='set':
-@@ -833,7 +839,7 @@
+@@ -833,7 +841,7 @@
                  if action=='resetPosition': self.reset_position()
                  elif action in ('openReleases','openGithub','openSource','feedback'): QDesktopServices.openUrl(QUrl('https://github.com/lokicorvus/crosspet'))
                  elif action=='devConsole': self.open_panel('devconsole')
@@ -89,3 +116,56 @@
                  elif action=='openData': QDesktopServices.openUrl(QUrl.fromLocalFile(str(core.state_dir())))
          else:
              if cmd=='pet' and isinstance(msg.get('code'),str):
+@@ -899,6 +907,9 @@
+             return
+         # Keep Lite's truthful log timestamps. Never infer 100% when a reset passes.
+         view = dict(text=text.replace('\n',' ｜ '),low=any(w.get('remaining',100)<=10 for w in quota.get('windows',[])),source='stale')
++        if character == 'gpt' and quota.get('windows'):
++            view['bars'] = [dict(label=w['label'], left=w['remaining']/100) for w in quota['windows']]
++            view['note'] = text.split('\n', 1)[-1]
+         self.js(js_call('setQuota',character,view))
+ 
+     def poll(self):
+--- a/tests/test_ui.py
++++ b/tests/test_ui.py
+@@ -66,6 +66,24 @@
+     def status(self):
+         return self.evaluate('devStatus()')
+ 
++    def test_quota_bar_keeps_recorded_value_after_reset(self):
++        self.pet.set_setting('quotaStyle', 'bars')
++        self.pet.push_quota('gpt', {'ts': time.time(), 'windows': [{'label':'5小时', 'remaining':37, 'reset':time.time()-5}]})
++        self.wait_until(lambda: self.evaluate("document.querySelector('#quota .qp')?.textContent || ''") == '37%')
++        self.assertEqual(self.evaluate("document.querySelector('#quota .qp').textContent"), '37%')
++        self.assertIn('待刷新', self.evaluate("document.querySelector('#quota').textContent"))
++
++    def test_character_picker_opens_and_switches_grok(self):
++        self.pet.open_panel('characters')
++        self.wait_until(lambda: 'characters' in self.pet.panels)
++        page = self.pet.panels['characters'][1].page()
++        self.wait_until(lambda: page.url().path().endswith('characters.html'))
++        self.wait_until(lambda: self.evaluate("document.querySelectorAll('#characterCards .pcard').length", page) == len(core.CHARACTERS))
++        self.wait_until(lambda: self.evaluate("Array.from(document.querySelectorAll('#characterCards .pcard img')).some(i => i.naturalWidth > 0)", page))
++        self.evaluate("Array.from(document.querySelectorAll('#characterCards .pcard')).find(x => x.title === 'Grok').click()", page)
++        self.wait_until(lambda: self.pet.character == 'grok')
++        self.assertEqual(self.pet.character, 'grok')
++
+     def test_full_manifest_images_motion_and_transparent_render(self):
+         self.assertEqual(validate_assets(),[])
+         self.assertTrue(self.pet.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
+@@ -107,6 +125,7 @@
+ 
+     def test_settings_roundtrip_text_size_and_preview_close(self):
+         self.pet.open_panel('settings')
++        self.wait_until(lambda: 'settings' in self.pet.panels)
+         page = self.pet.panels['settings'][1].page()
+         self.wait_until(lambda:page.url().path().endswith('settings.html'))
+         QTest.qWait(500)
+@@ -124,6 +143,7 @@
+         QTest.qWait(100)
+         self.assertEqual(self.pet.characters['gpt']['name'],'小白龙')
+         self.pet.open_panel('devconsole')
++        self.wait_until(lambda: 'devconsole' in self.pet.panels)
+         QTest.qWait(800)
+         self.assertTrue(self.pet.paused)
+         self.pet.panels['devconsole'][0].close()
