@@ -1,0 +1,42 @@
+name: Desktop builds
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0
+      - name: Install app and build tools
+        run: python -m pip install . pyinstaller
+      - name: Test persistence, GUI, CLI and single instance
+        run: python -m unittest discover -s tests -v
+      - name: Build native desktop and CLI
+        if: runner.os != 'Linux'
+        run: python scripts/build-desktop.py
+      - name: Check frozen CLI and GUI startup
+        if: runner.os != 'Linux'
+        run: python scripts/smoke-frozen.py
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Linux'
+        with:
+          name: TodoNotes-${{ matrix.os }}
+          path: dist/TodoNotes-*.zip
+          if-no-files-found: error

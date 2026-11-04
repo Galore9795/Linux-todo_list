@@ -2,6 +2,14 @@
 
 更新日期：2026-11-04
 
+## Windows / macOS 适配（2026-11-04）
+
+按本次用户要求扩展平台范围，保留现有 Python / Qt / SQLite 实现。新增原生数据目录和统一路径模块，单实例改为 Qt QLockFile；Windows/macOS 从 CLI 独立启动 GUI，不调用 systemd。增加 pip 安装入口、PyInstaller 桌面与命令行打包脚本，以及 Windows x64、macOS Apple Silicon/Intel、Linux 的自动测试流水线。下载与运行方式见 INSTALL.md。
+
+云端 Linux 已通过 44 项自动测试和 Python 编译检查，并验证可编辑 pip 安装；Windows/macOS 原生测试及打包结果以新增 Actions 为准。
+
+Linux 专有 X11 行为和既有 Crosspet 补丁保留。Windows/macOS 的显示桌面、全屏、虚拟桌面、多屏和缺口穿透尚未实机验收；日历、普通 Chat 与 Crosspet 跨平台集成的未完成事项仍如原记录，不因源码适配而视为完成。
+
 ## 开发原则
 
 优先解决实际使用中的问题。只为排除罕见情况而增加的功能、流程和说明，暂不加入。完整实现已确认需求，再根据使用反馈修正。

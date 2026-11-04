@@ -607,7 +607,7 @@ class RefreshTest(unittest.TestCase):
             db.close()
 
     def test_launch_again_reopens_hidden_notes(self):
-        import fcntl
+        from PyQt6.QtCore import QLockFile
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
@@ -617,8 +617,9 @@ class RefreshTest(unittest.TestCase):
             window = next(iter(manager.windows.values()))
             window.hide()
             lock_path = Path(root) / 'linux-todo-notes' / 'app.lock'
-            with lock_path.open('w') as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock = QLockFile(str(lock_path))
+            self.assertTrue(lock.tryLock(0))
+            try:
                 app.processEvents()
                 subprocess.run([sys.executable, '-m', 'todo_notes'], check=True, capture_output=True)
                 loop = QEventLoop()
@@ -626,6 +627,8 @@ class RefreshTest(unittest.TestCase):
                 QTimer.singleShot(1000, loop.quit)
                 loop.exec()
                 self.assertTrue(window.isVisible())
+            finally:
+                lock.unlock()
             manager.watcher.removePaths(manager.watcher.files())
             window.close()
             db.close()

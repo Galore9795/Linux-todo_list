@@ -1,10 +1,11 @@
 import os
 import sqlite3
 from pathlib import Path
+from .paths import data_dir
 
 
 def connect():
-    root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
+    root = data_dir()
     root.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(root / 'notes.sqlite3')
     db.row_factory = sqlite3.Row
@@ -30,7 +31,7 @@ def connect():
 
 def notify_change():
     """Wake an open GUI after a committed write; the database remains authoritative."""
-    root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
+    root = data_dir()
     try:
         (root / 'refresh.signal').touch()
     except OSError:
@@ -45,7 +46,7 @@ def create(db, title='', body='', source='', source_file=None, *, placed=True):
         original = Path(source_file)
         if not original.is_file():
             raise ValueError('source file not found')
-        root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes' / 'sources'
+        root = data_dir() / 'sources'
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         copied = root / (uuid.uuid4().hex + original.suffix.lower())
         try:

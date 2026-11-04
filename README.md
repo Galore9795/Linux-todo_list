@@ -1,8 +1,12 @@
-# Linux Todo Notes
+# Desktop Todo Notes
 
-把聊天里的任务变成 Linux 桌面上的便签，并通过 Apple Calendar 安排执行时间。
+把聊天里的任务变成桌面上的便签（Linux / Windows / macOS），并通过 Apple Calendar 安排执行时间。
 
 发一段文字或一张截图，整理成带描述的勾选清单。普通便签留在桌面，重要事项用图钉置顶，在工作时也能看见。
+
+## Windows / macOS
+
+Windows x64、Apple Silicon 和 Intel Mac 的原生构建入口、源码安装及下载方法见 [安装说明](INSTALL.md)。共用现有 PyQt6 / SQLite 功能；使用各系统的数据目录、跨平台单实例锁和独立进程启动。GitHub Actions 自动运行测试并生成独立桌面包与 CLI；平台构建结果以 Actions 为准，真实桌面行为尚需各系统实测。现有 Crosspet 定制仍限 Linux。
 
 ## 计划体验
 

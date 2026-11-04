@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher, QUrl, QPoint
 from PyQt6.QtGui import QGuiApplication, QPixmap, QDesktopServices, QColor, QPainter, QPainterPath, QLinearGradient, QPolygon, QRegion, QPen
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog, QSizeGrip, QToolButton, QMenu, QComboBox, QFrame
 from . import store
+from .paths import data_dir
 
 
 # Transparent room around the paper for the app-drawn shadow.
@@ -1116,9 +1117,7 @@ class Manager:
     def __init__(self, db):
         self.db, self.windows = db, {}
         self.editor = None
-        import os
-        from pathlib import Path
-        self.edit_request = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes' / 'edit.request'
+        self.edit_request = data_dir() / 'edit.request'
         self.desktop_layer = None
         self.showing_desktop = False
         if QGuiApplication.platformName() == 'xcb':
@@ -1131,9 +1130,7 @@ class Manager:
         if not db.execute('SELECT 1 FROM notes WHERE deleted=0').fetchone():
             store.create(db)
         self.refresh()
-        import os
-        from pathlib import Path
-        signal = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes' / 'refresh.signal'
+        signal = data_dir() / 'refresh.signal'
         signal.touch(exist_ok=True)
         show_signal = signal.with_name('show.signal')
         show_signal.touch(exist_ok=True)

@@ -57,6 +57,7 @@ class NotesTest(unittest.TestCase):
         self.assertEqual((row['source'], row['x'], row['pinned'], row['deleted']), ('original', 10, 1, 0))
         self.assertEqual(self.db.execute('SELECT done FROM items WHERE id=?', (item,)).fetchone()[0], 1)
 
+    @patch('sys.platform', 'linux')
     def test_independent_open_uses_service_and_falls_back(self):
         from unittest.mock import Mock
         from todo_notes.__main__ import open_independent
@@ -86,7 +87,8 @@ class NotesTest(unittest.TestCase):
             self.assertEqual(saved['desktop_drafts'][0]['value'], 'desktop draft')
             self.assertEqual(z.read(saved['source_file']), b'image bytes')
             self.assertFalse(saved['source_file'].startswith('/'))
-        self.assertEqual(archive.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':
+            self.assertEqual(archive.stat().st_mode & 0o777, 0o600)
         db_path = Path(self.db.execute('PRAGMA database_list').fetchone()[2])
         with self.assertRaises(ValueError):
             export_archive(self.db, db_path)
@@ -168,7 +170,8 @@ class NotesTest(unittest.TestCase):
         row = self.db.execute('SELECT source, source_file FROM notes WHERE id=?', (note,)).fetchone()
         self.assertEqual(row['source'], 'interpreted')
         self.assertEqual(Path(row['source_file']).read_bytes(), b'screenshot data')
-        self.assertEqual(Path(row['source_file']).stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':
+            self.assertEqual(Path(row['source_file']).stat().st_mode & 0o777, 0o600)
         with self.assertRaises(ValueError):
             store.create(self.db, source_file=original)
 

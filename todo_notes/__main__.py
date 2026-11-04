@@ -2,10 +2,11 @@ import argparse
 import json
 import sys
 from . import store
+from .paths import data_dir
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Linux desktop notes')
+    parser = argparse.ArgumentParser(description='Desktop Todo Notes (Linux, Windows, macOS)')
     sub = parser.add_subparsers(dest='command')
     sub.add_parser('open', help='open notes independently of Crosspet')
     sub.add_parser('edit', help='open the notes editing pad')
@@ -58,9 +59,7 @@ def main():
     if args.command == 'open':
         open_independent(db)
     elif args.command == 'edit':
-        import os
-        from pathlib import Path
-        root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
+        root = data_dir()
         (root / 'edit.request').touch()
         open_independent(db)
     elif args.command == 'new':
@@ -110,9 +109,16 @@ def main():
 def open_independent(db):
     import os
     import subprocess
+    if sys.platform != 'linux':
+        options = {'start_new_session': True}
+        if sys.platform == 'win32':
+            options = {'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
+        subprocess.Popen(gui_command(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, **options)
+        return
     unit = os.environ.get('TODO_NOTES_UNIT', 'linux-todo-notes.service')
     command = ['systemd-run', '--user', '--quiet', '--collect', '--unit=' + unit]
-    for name in ('DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_DATA_HOME', 'PYTHONPATH'):
+    for name in ('DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_DATA_HOME', 'TODO_NOTES_DATA_DIR', 'PYTHONPATH'):
         if name in os.environ:
             command.append('--setenv=' + name + '=' + os.environ[name])
     command += [sys.executable, '-m', 'todo_notes', 'gui']
@@ -126,19 +132,35 @@ def open_independent(db):
     launch(db)
 
 
+def gui_command():
+    if getattr(sys, 'frozen', False):
+        return [sys.executable, 'gui']
+    return [sys.executable, '-m', 'todo_notes', 'gui']
+
+
 def launch(db):
-    import fcntl
-    import os
-    from pathlib import Path
-    root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
-    lock = (root / 'app.lock').open('w')
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+    from PyQt6.QtCore import QLockFile
+    root = data_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    lock = QLockFile(str(root / 'app.lock'))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        if lock.error() != QLockFile.LockError.LockFailedError:
+            raise OSError('Cannot lock notes application data: ' + str(root))
         (root / 'show.signal').touch()
         return
-    from .gui import run
-    run(db)
+    try:
+        from .gui import run
+        run(db)
+    finally:
+        lock.unlock()
+
+
+def desktop_main():
+    # A desktop shortcut opens the editing pad, like the Crosspet entry.
+    if len(sys.argv) == 1:
+        sys.argv.append('edit')
+    main()
 
 
 if __name__ == '__main__':
