@@ -331,6 +331,21 @@ class NoteEditor(QDialog):
         self.error = QLabel()
         self.error.setWordWrap(True)
         form.addWidget(self.error)
+        self.conflict_panel = QFrame()
+        conflict_layout = QVBoxLayout(self.conflict_panel)
+        conflict_layout.setContentsMargins(0, 0, 0, 0)
+        conflict_layout.addWidget(QLabel('桌面上的最新内容'))
+        self.conflict_details = QTextEdit()
+        self.conflict_details.setReadOnly(True)
+        self.conflict_details.setMaximumHeight(100)
+        conflict_layout.addWidget(self.conflict_details)
+        self.keep_draft_button = QPushButton('保留我的输入，继续编辑')
+        self.keep_draft_button.setObjectName('secondary')
+        self.keep_draft_button.clicked.connect(self.keep_draft_after_conflict)
+        conflict_layout.addWidget(self.keep_draft_button)
+        self.conflict_panel.hide()
+        self.conflict_values = {}
+        form.addWidget(self.conflict_panel)
         buttons = QHBoxLayout()
         buttons.addStretch()
         save_button = QPushButton('保存到桌面')
@@ -381,6 +396,8 @@ class NoteEditor(QDialog):
         row = self.manager.db.execute('SELECT * FROM notes WHERE id=? AND deleted=0', (self.selector.currentData(),)).fetchone()
         if row is None:
             return
+        self.conflict_panel.hide()
+        self.conflict_values = {}
         self.current_id = row['id']
         saved = self.manager.db.execute('SELECT data FROM editor_drafts WHERE note_id=?', (self.current_id,)).fetchone()
         draft = self.drafts.get(self.current_id) or (json.loads(saved['data']) if saved else None)
@@ -406,6 +423,11 @@ class NoteEditor(QDialog):
         try:
             text = self.due_field.text().strip()
             due = self.original['due_at'] if text == self.original_due_text else (datetime.strptime(text, '%Y-%m-%d %H:%M').astimezone().isoformat(timespec='minutes') if text else '')
+        except ValueError:
+            self.error.setText('截止时间格式不正确，请按年-月-日 时:分填写。')
+            self.conflict_panel.hide()
+            return False
+        try:
             values = {'title': self.title_field.text(), 'body': self.body_field.toPlainText(), 'due_at': due}
             changed = {key: value for key, value in values.items() if value != self.original[key]}
             expected = {key: self.original[key] for key in changed}
@@ -420,7 +442,16 @@ class NoteEditor(QDialog):
             store.update(self.manager.db, self.selector.currentData(), expected=expected,
                          clear_editor_draft=True, **changed)
         except ValueError:
-            self.error.setText('无法保存：时间格式不正确，或便签已在别处修改。请检查后重试。')
+            current = self.manager.db.execute('SELECT * FROM notes WHERE id=? AND deleted=0', (self.selector.currentData(),)).fetchone()
+            self.conflict_values = {key: current[key] for key in changed if current is not None and current[key] != expected[key]}
+            if self.conflict_values:
+                labels = {'title': '任务名称', 'body': '内容', 'due_at': '截止时间'}
+                self.conflict_details.setPlainText('\n\n'.join(labels[key] + '：\n' + (display_time(value) if key == 'due_at' and value else value or '（空）') for key, value in self.conflict_values.items()))
+                self.conflict_panel.show()
+                self.error.setText('这些内容已在别处修改；你的草稿仍然保留。')
+            else:
+                self.conflict_panel.hide()
+                self.error.setText('便签已删除或发生变化，草稿仍然保留。')
             return False
         except sqlite3.Error:
             self.manager.db.rollback()
@@ -434,6 +465,17 @@ class NoteEditor(QDialog):
         self.load_note()
         self.error.setText('已保存到桌面')
         return True
+
+    def keep_draft_after_conflict(self):
+        from datetime import datetime
+        for key, value in self.conflict_values.items():
+            self.original[key] = value
+            if key == 'due_at':
+                self.original_due_text = datetime.fromisoformat(value).astimezone().strftime('%Y-%m-%d %H:%M') if value else ''
+        self.conflict_values = {}
+        self.conflict_panel.hide()
+        self.remember_draft()
+        self.error.setText('已保留你的输入；检查后可再次保存。')
 
     def tear_to(self, point):
         note_id = self.selector.currentData()
