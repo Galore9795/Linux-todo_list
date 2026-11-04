@@ -24,6 +24,27 @@ class NotesTest(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
+    def test_crosspet_menu_install_updates_manifest_and_is_idempotent(self):
+        root = Path(self.tmp.name) / 'crosspet-install'
+        package = root / 'crosspet'
+        package.mkdir(parents=True)
+        ui = package / 'ui.py'
+        glass = package / 'glass.py'
+        ui.write_text("def make_menu(self, menu, agent):\n        agent.setProperty('glassSymbol',AGENT_ICONS.get(self.character,'sparkles'))\n")
+        glass.write_text('SYMBOLS = {\n}\n')
+        manifest = root / 'MANIFEST.json'
+        manifest.write_text(json.dumps({'files': {'crosspet/ui.py': 'old', 'crosspet/glass.py': 'old', 'untouched': 'keep'}}))
+        script = Path(__file__).resolve().parents[1] / 'scripts/install-crosspet-menu.py'
+        for _ in range(2):
+            subprocess.run([sys.executable, str(script), '--crosspet', str(root)], check=True, capture_output=True)
+        import hashlib
+        files = json.loads(manifest.read_text())['files']
+        self.assertEqual(files['crosspet/ui.py'], hashlib.sha256(ui.read_bytes()).hexdigest())
+        self.assertEqual(files['crosspet/glass.py'], hashlib.sha256(glass.read_bytes()).hexdigest())
+        self.assertEqual(files['untouched'], 'keep')
+        self.assertEqual(ui.read_text().count("notes.setProperty('glassSymbol', 'todo-note')"), 1)
+        self.assertIn("'.local/bin/linux-todo-notes'), 'edit'", ui.read_text())
+
     def test_persistence_and_restore(self):
         note = store.create(self.db, 'title', 'description', 'original')
         item = store.add_item(self.db, note, 'first')

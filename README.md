@@ -53,7 +53,7 @@
 
 时间与日历记录：`update ID --reminder-at ISO时间 --start-at ISO时间 --end-at ISO时间 --due-at ISO时间` 分别保存提醒、执行开始和结束、截止时间，时间须带时区偏移，空字符串可清除。便签显示这些时间、上次核对时间及写入状态。`calendar-check ID success|failed` 和 `calendar-write ID success|failed` 只记录实际日历操作的结果，不会访问日历；成功写入时须提供 `--calendar-id` 和 `--event-id`。失败保留已有事件关联和上次成功核对时间。聊天端日历实际读写流程仍需验证。
 
-Crosspet 入口：运行 `python3 scripts/install-crosspet-menu.py` 将“桌面便签”及线条 SVG 图标加入已安装 Crosspet 的右键菜单。当前安装版本已接入；重启 Crosspet 后加载。若更新 Crosspet 后入口消失，重新运行脚本。便签仍可独立启动。
+Crosspet 入口：运行 `python3 scripts/install-crosspet-menu.py` 将“桌面便签”及线条 SVG 图标加入已安装 Crosspet 的右键菜单。当前安装版本已接入；重启 Crosspet 后加载。若更新 Crosspet 后入口消失，重新运行脚本；脚本会同步更新已登记文件的安装校验值。便签仍可独立启动。
 
 对话刷新信号：`scripts/prompt-refresh.py` 只触碰本地空信号文件，不读取或保存对话内容；运行中的便签监听信号并刷新，同时保留定时检查。支持的 Codex 环境可将此脚本配置为 `UserPromptSubmit` 命令钩子。按照 [OpenAI 钩子文档](https://learn.chatgpt.com/docs/hooks)，用户级非托管钩子需要在 `/hooks` 中审阅并信任；为遵守不打扰的要求，目前没有自动修改用户钩子配置或触发信任提示。普通 Chat 的自动触发未验证。
 
@@ -124,3 +124,5 @@ Crosspet 的 Cursor 钩子配置可用 `python3 scripts/cursor-hook-config.py --
 自动检查：`python3 -m unittest discover -s tests -q`；隔离 GNOME/X11 操作测试：`./tests/run_nested_desktop.sh` 及 `./tests/run_nested_desktop.sh tests/manual_editor.py`；窗口可读性检查：`./tests/run_nested_desktop.sh tests/manual_dialogs.py`。编辑器测试在独立测试桌面用鼠标事件验证拖拽落点，不操作用户当前工作区。
 
 桌面便签文字若与其他入口同时修改同一字段，不会自动覆盖：当前输入保留在窗口，使用便签菜单的“处理文字冲突”可对照并选择保留哪一份。冲突草稿正常写入本地后可在重启后恢复，备份也会包含；若本地写入失败，界面会提示并重试。
+
+Crosspet 右键实测：`./tests/run_nested_desktop.sh tests/manual_crosspet_menu.py` 在隔离 GNOME 会话运行本机已安装的桌宠，用鼠标事件右键角色、点击带 SVG 图标的“桌面便签”，并确认便签本窗口打开；测试数据和配置使用临时目录。此测试不操作用户当前桌面。
