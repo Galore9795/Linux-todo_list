@@ -16,6 +16,63 @@ from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, vi
 
 
 class RefreshTest(unittest.TestCase):
+    def test_conflict_draft_retries_when_local_storage_fails(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '原题')
+            manager = Manager(db)
+            note = manager.windows[note_id]
+            db.execute("CREATE TRIGGER block_desktop_draft BEFORE INSERT ON desktop_drafts BEGIN SELECT RAISE(FAIL, 'unavailable'); END")
+            db.commit()
+            store.update(db, note_id, title='外部更新')
+            note.title.setText('本地输入')
+            self.assertIn('保存失败', note.save_status.text())
+            self.assertEqual(note.title.text(), '本地输入')
+            db.execute('DROP TRIGGER block_desktop_draft')
+            db.commit()
+            note.flush_pending()
+            self.assertEqual(db.execute('SELECT value FROM desktop_drafts WHERE note_id=?', (note_id,)).fetchone()[0], '本地输入')
+            self.assertIn('文字冲突', note.save_status.text())
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            note.close()
+            db.close()
+
+    def test_desktop_conflict_draft_survives_restart_and_resolution(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '原题目')
+            manager = Manager(db)
+            note = manager.windows[note_id]
+            store.update(db, note_id, title='其他入口的新题目')
+            note.title.setText('本地未处理的输入')
+            note.title.setText('继续输入的内容')
+            saved = db.execute('SELECT value, base FROM desktop_drafts WHERE note_id=? AND field=?', (note_id, 'title')).fetchone()
+            self.assertEqual(tuple(saved), ('继续输入的内容', '原题目'))
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            note.close()
+            db.close()
+
+            db = store.connect()
+            manager = Manager(db)
+            note = manager.windows[note_id]
+            self.assertEqual(note.title.text(), '继续输入的内容')
+            self.assertIn('title', note.field_conflicts)
+            self.assertEqual(db.execute('SELECT title FROM notes WHERE id=?', (note_id,)).fetchone()[0], '其他入口的新题目')
+            with patch('todo_notes.gui.QDialog.exec', return_value=2):
+                note.resolve_field_conflict()
+            self.assertEqual(db.execute('SELECT title FROM notes WHERE id=?', (note_id,)).fetchone()[0], '继续输入的内容')
+            self.assertIsNone(db.execute('SELECT 1 FROM desktop_drafts WHERE note_id=?', (note_id,)).fetchone())
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            note.close()
+            db.close()
+
     def test_desktop_text_conflict_preserves_both_versions_until_resolved(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)

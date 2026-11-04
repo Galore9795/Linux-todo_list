@@ -53,6 +53,7 @@ class NotesTest(unittest.TestCase):
         note = store.create(self.db, 'private title', source_file=original)
         store.update(self.db, note, item_draft='draft', deleted=1)
         self.db.execute('INSERT INTO editor_drafts (note_id, data) VALUES (?, ?)', (note, json.dumps(['unfinished'])))
+        self.db.execute('INSERT INTO desktop_drafts (note_id, field, value, base) VALUES (?, ?, ?, ?)', (note, 'title', 'desktop draft', 'original'))
         self.db.commit()
         archive = Path(self.tmp.name) / 'backup.zip'
         export_archive(self.db, archive)
@@ -61,6 +62,7 @@ class NotesTest(unittest.TestCase):
             saved = data['notes'][0]
             self.assertEqual((saved['title'], saved['item_draft'], saved['deleted']), ('private title', 'draft', 1))
             self.assertEqual(saved['editor_draft'], ['unfinished'])
+            self.assertEqual(saved['desktop_drafts'][0]['value'], 'desktop draft')
             self.assertEqual(z.read(saved['source_file']), b'image bytes')
             self.assertFalse(saved['source_file'].startswith('/'))
         self.assertEqual(archive.stat().st_mode & 0o777, 0o600)

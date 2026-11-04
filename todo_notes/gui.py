@@ -538,6 +538,7 @@ class Note(QWidget):
         self.pending_fields = {}
         self.saved_fields = {key: row[key] for key in ('title', 'body', 'item_draft')}
         self.field_conflicts = set()
+        self.dirty_conflict_drafts = set()
         self.setWindowTitle('Todo Note')
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setObjectName('paper')
@@ -639,6 +640,19 @@ class Note(QWidget):
             bar.setVisible(not row['collapsed'])
         self.collapse_button.setText('展开' if row['collapsed'] else '收起')
         self.sync_items()
+        for draft in self.manager.db.execute('SELECT field, value, base FROM desktop_drafts WHERE note_id=?', (self.id,)):
+            key = draft['field']
+            if key not in self.saved_fields:
+                continue
+            self.saved_fields[key] = draft['base']
+            self.pending_fields[key] = draft['value']
+            self.field_conflicts.add(key)
+            widget = {'title': self.title, 'body': self.body, 'item_draft': self.item_input}[key]
+            widget.blockSignals(True)
+            widget.setPlainText(draft['value']) if key == 'body' else widget.setText(draft['value'])
+            widget.blockSignals(False)
+        if self.field_conflicts:
+            self.save_status.setText('已恢复冲突草稿；请在菜单中处理文字冲突')
         self.loading = False
         if self.manager.showing_desktop:
             self.winId()
@@ -653,6 +667,8 @@ class Note(QWidget):
         if self.loading:
             return
         self.pending_fields[key] = value
+        if key in self.field_conflicts:
+            self.dirty_conflict_drafts.add(key)
         self.flush_pending()
 
     def flush_pending(self):
@@ -663,16 +679,29 @@ class Note(QWidget):
             if key in self.field_conflicts:
                 continue
             try:
-                store.update(self.manager.db, self.id, expected={key: self.saved_fields[key], 'deleted': 0}, **{key: value})
+                store.update(self.manager.db, self.id, expected={key: self.saved_fields[key], 'deleted': 0}, clear_desktop_draft=key, **{key: value})
             except ValueError:
                 self.field_conflicts.add(key)
+                self.dirty_conflict_drafts.add(key)
             except sqlite3.Error:
                 self.manager.db.rollback()
                 failed = True
             else:
                 self.saved_fields[key] = value
                 self.pending_fields.pop(key, None)
-        if self.field_conflicts:
+                self.dirty_conflict_drafts.discard(key)
+        for key in list(self.dirty_conflict_drafts):
+            try:
+                self.manager.db.execute('INSERT INTO desktop_drafts (note_id, field, value, base) VALUES (?, ?, ?, ?) ON CONFLICT(note_id, field) DO UPDATE SET value=excluded.value, base=excluded.base',
+                                        (self.id, key, self.pending_fields[key], self.saved_fields[key]))
+                self.manager.db.commit()
+                self.dirty_conflict_drafts.discard(key)
+            except sqlite3.Error:
+                self.manager.db.rollback()
+                failed = True
+        if self.dirty_conflict_drafts:
+            self.save_status.setText('冲突草稿保存失败；输入暂留在窗口中')
+        elif self.field_conflicts:
             self.save_status.setText('文字已在别处修改；请在菜单中处理文字冲突')
         elif failed:
             self.save_status.setText('文字和草稿：保存失败，正在重试')
@@ -714,11 +743,19 @@ class Note(QWidget):
         dialog.resize(460, 400)
         choice = dialog.exec()
         if choice == 1:
+            try:
+                self.manager.db.execute('DELETE FROM desktop_drafts WHERE note_id=? AND field=?', (self.id, key))
+                self.manager.db.commit()
+            except sqlite3.Error:
+                self.manager.db.rollback()
+                self.save_status.setText('无法更新冲突草稿，请重试；输入仍保留')
+                return
             widget = {'title': self.title, 'body': self.body, 'item_draft': self.item_input}[key]
             widget.blockSignals(True)
             widget.setPlainText(current) if key == 'body' else widget.setText(current)
             widget.blockSignals(False)
             self.pending_fields.pop(key, None)
+            self.dirty_conflict_drafts.discard(key)
         elif choice != 2:
             return
         self.saved_fields[key] = current

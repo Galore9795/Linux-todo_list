@@ -45,6 +45,7 @@ def move(point):
 def button(down):
     xt.XTestFakeButtonEvent(display, 1, int(down), 0)
     x.XFlush(display); QTest.qWait(150)
+editor.raise_(); editor.activateWindow(); QTest.qWait(400)
 start = editor.tear_handle.mapToGlobal(editor.tear_handle.rect().center())
 target = QPoint(380, 160)
 move(start); button(True); move(target)
@@ -62,6 +63,7 @@ fresh_id = editor.selector.currentData()
 editor.title_field.setText('新纸片')
 assert fresh_id not in manager.windows
 QTest.qWait(200)
+editor.raise_(); editor.activateWindow(); QTest.qWait(400)
 start = editor.tear_handle.mapToGlobal(editor.tear_handle.rect().center())
 target = QPoint(430, 210)
 move(start); button(True); move(target)

@@ -123,4 +123,4 @@ Crosspet 的 Cursor 钩子配置可用 `python3 scripts/cursor-hook-config.py --
 
 自动检查：`python3 -m unittest discover -s tests -q`；隔离 GNOME/X11 操作测试：`./tests/run_nested_desktop.sh` 及 `./tests/run_nested_desktop.sh tests/manual_editor.py`。后者在独立测试桌面用鼠标事件验证拖拽落点，不操作用户当前工作区。
 
-桌面便签文字若与其他入口同时修改同一字段，不会自动覆盖：当前输入保留在窗口，使用便签菜单的“处理文字冲突”可对照并选择保留哪一份。解决前若退出程序，这部分尚未保存到数据库的桌面输入会丢失。
+桌面便签文字若与其他入口同时修改同一字段，不会自动覆盖：当前输入保留在窗口，使用便签菜单的“处理文字冲突”可对照并选择保留哪一份。冲突草稿正常写入本地后可在重启后恢复，备份也会包含；若本地写入失败，界面会提示并重试。
