@@ -406,8 +406,19 @@ class NoteEditor(QDialog):
         try:
             text = self.due_field.text().strip()
             due = self.original['due_at'] if text == self.original_due_text else (datetime.strptime(text, '%Y-%m-%d %H:%M').astimezone().isoformat(timespec='minutes') if text else '')
-            store.update(self.manager.db, self.selector.currentData(), expected={**self.original, 'deleted': 0}, clear_editor_draft=True,
-                         title=self.title_field.text(), body=self.body_field.toPlainText(), due_at=due)
+            values = {'title': self.title_field.text(), 'body': self.body_field.toPlainText(), 'due_at': due}
+            changed = {key: value for key, value in values.items() if value != self.original[key]}
+            expected = {key: self.original[key] for key in changed}
+            expected['deleted'] = 0
+            if not changed:
+                # An untouched editor should not overwrite newer data from another entry point.
+                current = self.manager.db.execute('SELECT title FROM notes WHERE id=? AND deleted=0', (self.selector.currentData(),)).fetchone()
+                if current is None:
+                    raise ValueError('note deleted')
+                changed['title'] = current['title']
+                expected['title'] = current['title']
+            store.update(self.manager.db, self.selector.currentData(), expected=expected,
+                         clear_editor_draft=True, **changed)
         except ValueError:
             self.error.setText('无法保存：时间格式不正确，或便签已在别处修改。请检查后重试。')
             return False
@@ -546,6 +557,7 @@ class Note(QWidget):
         self.body.setVisible(not row['collapsed'])
         self.items.setVisible(not row['collapsed'])
         self.item_input.setVisible(not row['collapsed'])
+        self.calendar_status.setVisible(not row['collapsed'])
         self.status_bar.setVisible(not row['collapsed'])
         for bar in self.secondary_bars:
             bar.setVisible(not row['collapsed'])
@@ -589,16 +601,15 @@ class Note(QWidget):
             parts.append('提醒：' + display_time(row['reminder_at']))
         if row['due_at']:
             parts.append('截止：' + display_time(row['due_at']))
-        if row['calendar_checked_at'] or row['calendar_check_status'] == 'failed':
-            status = display_time(row['calendar_checked_at']) if row['calendar_checked_at'] else '尚未核对日历'
-            if row['calendar_check_status'] == 'failed':
-                status += '（上次核对失败）'
-            parts.append('日历核对：' + status)
+        status = display_time(row['calendar_checked_at']) if row['calendar_checked_at'] else '尚未核对'
+        if row['calendar_check_status'] == 'failed':
+            status += '（上次核对失败）'
+        parts.append('日历核对：' + status)
         if row['calendar_write_status'] != 'not_scheduled':
             labels = {'success': '成功', 'failed': '失败', 'pending': '执行时间已修改，待更新日历', 'unknown': '结果不确定，需先核对事件'}
             parts.append('日历写入：' + labels.get(row['calendar_write_status'], row['calendar_write_status']))
         self.calendar_status.setText('\n'.join(parts))
-        self.calendar_status.setVisible(bool(row['start_at'] or row['end_at'] or row['reminder_at'] or row['due_at'] or row['calendar_checked_at'] or row['calendar_check_status'] == 'failed' or row['calendar_write_status'] != 'not_scheduled') and not self.body.isHidden())
+        self.calendar_status.setVisible(not self.body.isHidden())
 
     def sync_items(self):
         rows = self.manager.db.execute('SELECT * FROM items WHERE note_id=? AND deleted=0 ORDER BY id', (self.id,)).fetchall()
@@ -883,8 +894,8 @@ class Manager:
     def open_editor(self, note_id=None):
         if self.editor is None:
             self.editor = NoteEditor(self, note_id)
-        elif note_id is not None and note_id != self.editor.current_id:
-            self.editor.reload_choices(note_id)
+        elif not self.editor.isVisible() or (note_id is not None and note_id != self.editor.current_id):
+            self.editor.reload_choices(note_id if note_id is not None else self.editor.current_id)
             self.editor.load_note()
         self.editor.show()
         self.editor.raise_()

@@ -16,6 +16,50 @@ from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, vi
 
 
 class RefreshTest(unittest.TestCase):
+    def test_editor_merges_changes_to_different_fields(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '标题', '内容')
+            manager = Manager(db)
+            editor = NoteEditor(manager, note_id)
+            editor.title_field.setText('便签本修改的标题')
+            store.update(db, note_id, body='聊天修改的内容')
+            self.assertTrue(editor.save())
+            row = db.execute('SELECT title, body FROM notes WHERE id=?', (note_id,)).fetchone()
+            self.assertEqual(tuple(row), ('便签本修改的标题', '聊天修改的内容'))
+            self.assertEqual(editor.body_field.toPlainText(), '聊天修改的内容')
+            store.update(db, note_id, title='更新后的标题')
+            self.assertTrue(editor.save())
+            self.assertEqual(db.execute('SELECT title FROM notes WHERE id=?', (note_id,)).fetchone()[0], '更新后的标题')
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
+    def test_reopening_editor_refreshes_clean_note_from_other_entry(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '原标题')
+            manager = Manager(db)
+            manager.open_editor(note_id)
+            manager.editor.close()
+            store.update(db, note_id, title='外部更新')
+            manager.open_editor()
+            self.assertEqual(manager.editor.title_field.text(), '外部更新')
+            self.assertIn('尚未核对', manager.windows[note_id].calendar_status.text())
+            manager.editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
     def test_editor_draft_survives_restart_and_does_not_overwrite_external_edit(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
