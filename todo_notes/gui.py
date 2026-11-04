@@ -70,31 +70,6 @@ class SaveStatus(QLabel):
         self.setVisible(text != '文字和草稿：已保存')
 
 
-class PaperEdge(QWidget):
-    def __init__(self, color, parent=None):
-        super().__init__(parent)
-        self.color = QColor(color)
-        self.setFixedHeight(12)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w = self.width()
-        path = QPainterPath()
-        path.moveTo(0, 1)
-        path.quadTo(w / 2, 12, w, 1)
-        path.lineTo(w, 8)
-        path.quadTo(w / 2, 15, 0, 8)
-        path.closeSubpath()
-        gradient = QLinearGradient(0, 1, 0, 12)
-        gradient.setColorAt(0, self.color.lighter(106))
-        gradient.setColorAt(0.65, self.color.darker(105))
-        gradient.setColorAt(1, QColor(67, 46, 40, 65))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.fillPath(path, gradient)
-
-
 class PaperResizeGrip(QSizeGrip):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -541,19 +516,24 @@ class Note(QWidget):
         self.dirty_conflict_drafts = set()
         self.setWindowTitle('Todo Note')
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.paper_color = QColor(row['color'])
         self.setObjectName('paper')
         self.setStyleSheet("""
             QWidget { background: transparent; color: #49342f; font-size: 14px; }
-            QWidget#paper { background-color: %s; border: 1px solid rgba(74, 48, 42, 45); }
             QLineEdit, QTextEdit, QListWidget { border: 0; background: transparent; selection-background-color: #ba8277; }
             QLineEdit:focus, QTextEdit:focus, QListWidget:focus { outline: none; }
             QPushButton, QToolButton { border: 0; padding: 3px 5px; color: #75564d; background: transparent; }
             QPushButton:hover, QToolButton:hover { background: rgba(100, 65, 54, 25); border-radius: 4px; }
             QMenu { background: #fff8ee; border: 1px solid #d5c3b5; }
             QMenu::item:selected { background: #ead8ca; }
-        """ % row['color'])
+            QDialog { background: #fff8ed; }
+            QDialog QLineEdit, QDialog QTextEdit { background: #fffdf7; border: 1px solid #dccabb; padding: 4px; }
+            QDialog QPushButton { background: #80645a; color: white; padding: 7px; border-radius: 4px; }
+            QDialog QPushButton:hover { background: #684e44; }
+        """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 10, 15, 12)
+        layout.setContentsMargins(17, 10, 17, 22)
         layout.setSpacing(5)
         self.desktop_bar = QWidget()
         desktop_bar_layout = QHBoxLayout(self.desktop_bar)
@@ -622,8 +602,6 @@ class Note(QWidget):
         self.resize_grip = PaperResizeGrip(self.grip_bar)
         grip_layout.addWidget(self.resize_grip)
         layout.addWidget(self.grip_bar)
-        self.paper_edge = PaperEdge(row['color'])
-        layout.addWidget(self.paper_edge)
         self.title.textChanged.connect(lambda text: self.save_field('title', text))
         self.body.textChanged.connect(lambda: self.save_field('body', self.body.toPlainText()))
         self.resize(row['width'], row['height'])
@@ -662,6 +640,34 @@ class Note(QWidget):
             self.ensure_visible()
         if row['collapsed']:
             QTimer.singleShot(0, self.adjustSize)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        width, height = self.width(), self.height()
+        shadow = QPainterPath()
+        shadow.moveTo(6, height - 19)
+        shadow.cubicTo(width * .28, height - 9, width * .72, height - 9, width - 6, height - 19)
+        shadow.lineTo(width - 9, height - 5)
+        shadow.cubicTo(width * .73, height + 2, width * .27, height + 2, 9, height - 5)
+        shadow.closeSubpath()
+        shadow_fill = QLinearGradient(0, height - 19, 0, height)
+        shadow_fill.setColorAt(0, QColor(52, 37, 31, 95))
+        shadow_fill.setColorAt(1, QColor(52, 37, 31, 0))
+        painter.fillPath(shadow, shadow_fill)
+        paper = QPainterPath()
+        paper.moveTo(2, 1)
+        paper.lineTo(width - 2, 1)
+        paper.lineTo(width - 2, height - 19)
+        paper.cubicTo(width * .73, height - 8, width * .27, height - 8, 2, height - 19)
+        paper.closeSubpath()
+        paper_fill = QLinearGradient(0, 0, 0, height)
+        paper_fill.setColorAt(0, self.paper_color.lighter(102))
+        paper_fill.setColorAt(.7, self.paper_color)
+        paper_fill.setColorAt(1, self.paper_color.darker(106))
+        painter.fillPath(paper, paper_fill)
+        painter.setPen(QColor(89, 63, 50, 50))
+        painter.drawPath(paper)
 
     def save_field(self, key, value):
         if self.loading:
