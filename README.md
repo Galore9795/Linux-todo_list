@@ -14,7 +14,7 @@
 
 ## 开发进度
 
-本地便签、便签本、Crosspet 右键入口及共享命令入口已实现。隔离 GNOME/X11 会话中的鼠标操作、显示桌面、置顶层级和分辨率变化已验证；项目尚未完成完整交付，聊天日历安排流程、日常自动钩子、普通 Chat 接入、用户当前桌面端到端验收及物理多显示器热插拔仍待完成。
+本地便签、便签本、Crosspet 右键入口及共享命令入口已实现。隔离 GNOME/X11 会话中的鼠标操作、显示桌面、置顶层级和分辨率变化已验证；当前桌面以临时数据走通了文字→便签→编辑勾选→置顶→重启恢复→跨项目添加。项目尚未完成完整交付，聊天日历安排流程、日常自动钩子、普通 Chat 接入、真实数据及 Crosspet 实际桌面入口验收、物理多显示器热插拔仍待完成。
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
@@ -128,7 +128,9 @@ Crosspet 的 Cursor 钩子配置可用 `python3 scripts/cursor-hook-config.py --
 
 Crosspet 右键实测：`./tests/run_nested_desktop.sh tests/manual_crosspet_menu.py` 在隔离 GNOME 会话运行本机已安装的桌宠，用鼠标事件右键角色、点击带 SVG 图标的“桌面便签”，并确认便签本窗口打开；测试数据和配置使用临时目录。此测试不操作用户当前桌面。
 
-本机当前运行的便签服务已载入上述新版，Crosspet 菜单可重新打开便签本。自动对话钩子仍未启用，普通 Chat 接入和真实多显示器热插拔仍待验证。
+当前桌面验收：`tests/manual_current_desktop.py` 在临时 `XDG_DATA_HOME` 下分 setup、verify 两步运行，先由另一个目录写入“准备演示”便签；需设置 `TODO_NOTES_LIVE_DESKTOP=1`，脚本会拒绝使用真实应用数据目录。2026-11-04 已在本机 GNOME/X11 桌面跑通文字写入、便签出现、编辑勾选、置顶、重启恢复及另一项目写入；会短暂打开测试便签，不读写真实任务数据。真实数据、截图来源和 Crosspet 实际入口仍未验收。
+
+本机便签服务在 GNOME 会话重启后不会自动启动；再次从 Crosspet 菜单或运行 `linux-todo-notes open` 即可，便签、草稿和位置从本地数据库恢复。自动对话钩子仍未启用，普通 Chat 接入和真实多显示器热插拔仍待验证。
 
 纸张参考：[墙面便签实拍](https://qz.com/894564/your-daily-to-do-list-should-fit-on-a-post-it-note-and-other-practical-productivity-tips)、[单角翘起的便签](https://depositphotos.com/photo/blank-yellow-sticky-note-white-background-top-view-617147242.html)及[纸张折角参考](https://store.oliviarodrigo.com/pages/festival)。参考纸张轮廓、折角和阴影，用程序自行绘制，未复制图片素材。浅色与深色背景验证：`./tests/run_nested_desktop.sh tests/manual_paper_surface.py`。
 
