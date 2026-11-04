@@ -16,6 +16,35 @@ from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, vi
 
 
 class RefreshTest(unittest.TestCase):
+    def test_desktop_text_conflict_preserves_both_versions_until_resolved(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '旧标题', '原内容')
+            manager = Manager(db)
+            note = manager.windows[note_id]
+            store.update(db, note_id, title='聊天中的标题')
+            note.title.setText('桌面上的标题')
+            self.assertEqual(db.execute('SELECT title FROM notes WHERE id=?', (note_id,)).fetchone()[0], '聊天中的标题')
+            self.assertIn('title', note.field_conflicts)
+            note.body.setPlainText('独立修改的内容')
+            self.assertEqual(db.execute('SELECT body FROM notes WHERE id=?', (note_id,)).fetchone()[0], '独立修改的内容')
+            with patch('todo_notes.gui.QDialog.exec', return_value=2):
+                note.resolve_field_conflict()
+            self.assertEqual(db.execute('SELECT title FROM notes WHERE id=?', (note_id,)).fetchone()[0], '桌面上的标题')
+            self.assertFalse(note.pending_fields)
+            store.update(db, note_id, title='另一次修改')
+            note.title.setText('未保存的新标题')
+            with patch('todo_notes.gui.QDialog.exec', return_value=1):
+                note.resolve_field_conflict()
+            self.assertEqual(note.title.text(), '另一次修改')
+            self.assertFalse(note.pending_fields)
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            note.close()
+            db.close()
+
     def test_new_pad_note_stays_off_desktop_until_placed_and_survives_restart(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)

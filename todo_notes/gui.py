@@ -536,6 +536,8 @@ class Note(QWidget):
         self.pinned = bool(row['pinned'])
         self.previously_minimized = False
         self.pending_fields = {}
+        self.saved_fields = {key: row[key] for key in ('title', 'body', 'item_draft')}
+        self.field_conflicts = set()
         self.setWindowTitle('Todo Note')
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setObjectName('paper')
@@ -604,7 +606,7 @@ class Note(QWidget):
         menu_button.setText('•••')
         menu_button.setToolTip('便签操作')
         menu = QMenu(menu_button)
-        for label, callback in [('新建便签', self.new), ('编辑便签', self.edit_note), ('设置时间', self.edit_schedule),
+        for label, callback in [('新建便签', self.new), ('编辑便签', self.edit_note), ('处理文字冲突', self.resolve_field_conflict), ('设置时间', self.edit_schedule),
                                 ('删除选中项目', self.delete_item), ('撤销清单操作', self.undo_item),
                                 ('恢复删除', self.restore), ('删除便签', self.delete),
                                 ('导出备份', self.export_backup)]:
@@ -656,13 +658,73 @@ class Note(QWidget):
     def flush_pending(self):
         if not self.pending_fields:
             return
-        try:
-            store.update(self.manager.db, self.id, **self.pending_fields)
-        except (sqlite3.Error, ValueError):
-            self.manager.db.rollback()
+        failed = False
+        for key, value in list(self.pending_fields.items()):
+            if key in self.field_conflicts:
+                continue
+            try:
+                store.update(self.manager.db, self.id, expected={key: self.saved_fields[key], 'deleted': 0}, **{key: value})
+            except ValueError:
+                self.field_conflicts.add(key)
+            except sqlite3.Error:
+                self.manager.db.rollback()
+                failed = True
+            else:
+                self.saved_fields[key] = value
+                self.pending_fields.pop(key, None)
+        if self.field_conflicts:
+            self.save_status.setText('文字已在别处修改；请在菜单中处理文字冲突')
+        elif failed:
             self.save_status.setText('文字和草稿：保存失败，正在重试')
-        else:
-            self.pending_fields.clear()
+        elif not self.pending_fields:
+            self.save_status.setText('文字和草稿：已保存')
+
+    def resolve_field_conflict(self):
+        if not self.field_conflicts:
+            return
+        key = sorted(self.field_conflicts)[0]
+        row = self.manager.db.execute('SELECT * FROM notes WHERE id=? AND deleted=0', (self.id,)).fetchone()
+        if row is None:
+            self.save_status.setText('便签已删除；当前输入仍保留在窗口中')
+            return
+        current = row[key]
+        dialog = QDialog(self)
+        dialog.setWindowTitle('处理文字冲突')
+        dialog.setStyleSheet('QDialog { background: #fff8ed; } QWidget { color: #49342f; font-size: 14px; } QTextEdit { background: #fffdf7; border: 1px solid #dccabb; } QPushButton { background: #80645a; color: white; padding: 8px; border-radius: 4px; }')
+        layout = QVBoxLayout(dialog)
+        labels = {'title': '任务名称', 'body': '内容', 'item_draft': '清单草稿'}
+        layout.addWidget(QLabel(labels[key] + '：你的输入'))
+        local = QTextEdit()
+        local.setReadOnly(True)
+        local.setPlainText(self.pending_fields[key])
+        layout.addWidget(local)
+        layout.addWidget(QLabel('另一处的最新内容'))
+        latest = QTextEdit()
+        latest.setReadOnly(True)
+        latest.setPlainText(current)
+        layout.addWidget(latest)
+        buttons = QHBoxLayout()
+        use_latest = QPushButton('使用最新内容')
+        keep_local = QPushButton('保留我的输入')
+        use_latest.clicked.connect(lambda: dialog.done(1))
+        keep_local.clicked.connect(lambda: dialog.done(2))
+        buttons.addWidget(use_latest)
+        buttons.addWidget(keep_local)
+        layout.addLayout(buttons)
+        dialog.resize(460, 400)
+        choice = dialog.exec()
+        if choice == 1:
+            widget = {'title': self.title, 'body': self.body, 'item_draft': self.item_input}[key]
+            widget.blockSignals(True)
+            widget.setPlainText(current) if key == 'body' else widget.setText(current)
+            widget.blockSignals(False)
+            self.pending_fields.pop(key, None)
+        elif choice != 2:
+            return
+        self.saved_fields[key] = current
+        self.field_conflicts.discard(key)
+        self.flush_pending()
+        if not self.pending_fields:
             self.save_status.setText('文字和草稿：已保存')
 
     def update_calendar_status(self, row):
@@ -784,6 +846,10 @@ class Note(QWidget):
     def add_item(self):
         text = self.item_input.text().strip()
         if text:
+            self.flush_pending()
+            if 'item_draft' in self.pending_fields:
+                self.save_status.setText('清单草稿尚未保存，请先处理保存问题或文字冲突')
+                return
             try:
                 item_id = store.submit_item_draft(self.manager.db, self.id, self.item_input.text())
             except ValueError:
@@ -797,6 +863,7 @@ class Note(QWidget):
             self.item_input.blockSignals(True)
             self.item_input.clear()
             self.item_input.blockSignals(False)
+            self.saved_fields['item_draft'] = ''
             self.sync_items()
 
     def delete_item(self):
@@ -1025,18 +1092,21 @@ class Manager:
                 window.sync_items()
                 window.update_calendar_status(row)
                 window.source_button.setVisible(bool(row['source'] or row['source_file']))
-                if 'item_draft' not in window.pending_fields and not window.item_input.hasFocus() and window.item_input.text() != row['item_draft']:
+                if 'item_draft' not in window.pending_fields and window.item_input.text() != row['item_draft']:
                     window.item_input.blockSignals(True)
                     window.item_input.setText(row['item_draft'])
                     window.item_input.blockSignals(False)
-                if 'title' not in window.pending_fields and not window.title.hasFocus() and window.title.text() != row['title']:
+                if 'title' not in window.pending_fields and window.title.text() != row['title']:
                     window.title.blockSignals(True)
                     window.title.setText(row['title'])
                     window.title.blockSignals(False)
-                if 'body' not in window.pending_fields and not window.body.hasFocus() and window.body.toPlainText() != row['body']:
+                if 'body' not in window.pending_fields and window.body.toPlainText() != row['body']:
                     window.body.blockSignals(True)
                     window.body.setPlainText(row['body'])
                     window.body.blockSignals(False)
+                for key in ('title', 'body', 'item_draft'):
+                    if key not in window.pending_fields:
+                        window.saved_fields[key] = row[key]
 
 
 def run(db):
