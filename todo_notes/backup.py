@@ -15,6 +15,8 @@ def export_archive(db, destination):
         notes = [dict(row) for row in db.execute('SELECT * FROM notes ORDER BY id')]
         for note in notes:
             note['items'] = [dict(row) for row in db.execute('SELECT * FROM items WHERE note_id=? ORDER BY id', (note['id'],))]
+            draft = db.execute('SELECT data FROM editor_drafts WHERE note_id=?', (note['id'],)).fetchone()
+            note['editor_draft'] = json.loads(draft['data']) if draft else None
         db.commit()
     except Exception:
         db.rollback()

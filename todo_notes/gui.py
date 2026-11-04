@@ -260,6 +260,7 @@ class NoteEditor(QDialog):
         self.manager = manager
         self.drafts = {}
         self.current_id = None
+        self.loading_draft = False
         self.setWindowTitle('便签设置')
         self.resize(560, 650)
         self.setStyleSheet('''
@@ -339,6 +340,9 @@ class NoteEditor(QDialog):
         self.reload_choices(note_id)
         self.selector.currentIndexChanged.connect(self.load_note)
         self.load_note()
+        self.title_field.textChanged.connect(self.remember_draft)
+        self.body_field.textChanged.connect(self.remember_draft)
+        self.due_field.textChanged.connect(self.remember_draft)
 
     def reload_choices(self, note_id=None):
         self.selector.blockSignals(True)
@@ -349,35 +353,60 @@ class NoteEditor(QDialog):
         self.selector.setCurrentIndex(max(0, self.selector.findData(note_id)))
         self.selector.blockSignals(False)
 
+    def remember_draft(self):
+        import json
+        if self.loading_draft or self.current_id is None:
+            return
+        values = (self.title_field.text(), self.body_field.toPlainText(), self.due_field.text())
+        dirty = values != (self.original['title'], self.original['body'], self.original_due_text)
+        try:
+            if dirty:
+                draft = (*values, self.original, self.original_due_text)
+                self.drafts[self.current_id] = draft
+                self.manager.db.execute('INSERT INTO editor_drafts (note_id, data) VALUES (?, ?) ON CONFLICT(note_id) DO UPDATE SET data=excluded.data',
+                                        (self.current_id, json.dumps(draft, ensure_ascii=False)))
+            else:
+                self.drafts.pop(self.current_id, None)
+                self.manager.db.execute('DELETE FROM editor_drafts WHERE note_id=?', (self.current_id,))
+            self.manager.db.commit()
+            self.error.setText('草稿已保存' if dirty else '')
+        except sqlite3.Error:
+            self.manager.db.rollback()
+            self.error.setText('草稿保存失败，输入暂留在当前窗口')
+
     def load_note(self):
+        import json
         from datetime import datetime
-        if self.current_id is not None:
-            self.drafts[self.current_id] = (self.title_field.text(), self.body_field.toPlainText(),
-                                            self.due_field.text(), self.original, self.original_due_text)
+        self.remember_draft()
         row = self.manager.db.execute('SELECT * FROM notes WHERE id=? AND deleted=0', (self.selector.currentData(),)).fetchone()
         if row is None:
             return
         self.current_id = row['id']
-        if self.current_id in self.drafts:
-            title, body, due, self.original, self.original_due_text = self.drafts[self.current_id]
+        saved = self.manager.db.execute('SELECT data FROM editor_drafts WHERE note_id=?', (self.current_id,)).fetchone()
+        draft = self.drafts.get(self.current_id) or (json.loads(saved['data']) if saved else None)
+        self.loading_draft = True
+        try:
+            if draft:
+                title, body, due, self.original, self.original_due_text = draft
+                self.error.setText('已恢复未保存到桌面的草稿')
+            else:
+                self.original = {key: row[key] for key in ('title', 'body', 'due_at')}
+                title, body = row['title'], row['body']
+                due = datetime.fromisoformat(row['due_at']).astimezone().strftime('%Y-%m-%d %H:%M') if row['due_at'] else ''
+                self.original_due_text = due
+                self.error.clear()
             self.title_field.setText(title)
             self.body_field.setPlainText(body)
             self.due_field.setText(due)
-            self.error.clear()
-            return
-        self.original = {key: row[key] for key in ('title', 'body', 'due_at')}
-        self.title_field.setText(row['title'])
-        self.body_field.setPlainText(row['body'])
-        self.due_field.setText(datetime.fromisoformat(row['due_at']).astimezone().strftime('%Y-%m-%d %H:%M') if row['due_at'] else '')
-        self.original_due_text = self.due_field.text()
-        self.error.clear()
+        finally:
+            self.loading_draft = False
 
     def save(self):
         from datetime import datetime
         try:
             text = self.due_field.text().strip()
             due = self.original['due_at'] if text == self.original_due_text else (datetime.strptime(text, '%Y-%m-%d %H:%M').astimezone().isoformat(timespec='minutes') if text else '')
-            store.update(self.manager.db, self.selector.currentData(), expected=self.original,
+            store.update(self.manager.db, self.selector.currentData(), expected={**self.original, 'deleted': 0}, clear_editor_draft=True,
                          title=self.title_field.text(), body=self.body_field.toPlainText(), due_at=due)
         except ValueError:
             self.error.setText('无法保存：时间格式不正确，或便签已在别处修改。请检查后重试。')

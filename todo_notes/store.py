@@ -10,6 +10,7 @@ def connect():
     db.row_factory = sqlite3.Row
     db.execute('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT "", body TEXT NOT NULL DEFAULT "", color TEXT NOT NULL, x INTEGER, y INTEGER, width INTEGER DEFAULT 300, height INTEGER DEFAULT 280, pinned INTEGER DEFAULT 0, collapsed INTEGER DEFAULT 0, deleted INTEGER DEFAULT 0, source TEXT DEFAULT "")')
     db.execute('CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, note_id INTEGER NOT NULL REFERENCES notes(id), text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0)')
+    db.execute('CREATE TABLE IF NOT EXISTS editor_drafts (note_id INTEGER PRIMARY KEY REFERENCES notes(id), data TEXT NOT NULL)')
     if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(items)')}:
         db.execute('ALTER TABLE items ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
     columns = {row['name'] for row in db.execute('PRAGMA table_info(notes)')}
@@ -64,7 +65,7 @@ def create(db, title='', body='', source='', source_file=None):
         raise
 
 
-def update(db, note_id, *, expected=None, **fields):
+def update(db, note_id, *, expected=None, clear_editor_draft=False, **fields):
     allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at', 'item_draft'}
     if not fields or not fields.keys() <= allowed:
         raise ValueError('invalid fields')
@@ -93,6 +94,8 @@ def update(db, note_id, *, expected=None, **fields):
     if cursor.rowcount != 1:
         db.rollback()
         raise ValueError('note not found or changed')
+    if clear_editor_draft:
+        db.execute('DELETE FROM editor_drafts WHERE note_id=?', (note_id,))
     db.commit()
     notify_change()
 

@@ -16,6 +16,40 @@ from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, vi
 
 
 class RefreshTest(unittest.TestCase):
+    def test_editor_draft_survives_restart_and_does_not_overwrite_external_edit(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, '原题目', '原内容')
+            manager = Manager(db)
+            editor = NoteEditor(manager, note_id)
+            editor.title_field.setText('未完成的题目')
+            editor.due_field.setText('2026-11-')
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
+            db = store.connect()
+            store.update(db, note_id, title='其他入口的修改')
+            manager = Manager(db)
+            editor = NoteEditor(manager, note_id)
+            self.assertEqual(editor.title_field.text(), '未完成的题目')
+            self.assertEqual(editor.due_field.text(), '2026-11-')
+            editor.due_field.setText('2026-11-05 18:30')
+            self.assertFalse(editor.save())
+            self.assertEqual(db.execute('SELECT title FROM notes WHERE id=?', (note_id,)).fetchone()[0], '其他入口的修改')
+            self.assertIsNotNone(db.execute('SELECT data FROM editor_drafts WHERE note_id=?', (note_id,)).fetchone())
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
     def test_editing_pad_saves_three_fields_and_preserves_unsaved_switches(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)

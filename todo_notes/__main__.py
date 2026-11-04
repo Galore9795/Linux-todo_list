@@ -73,6 +73,9 @@ def main():
         notes = [dict(r) for r in rows]
         for note in notes:
             note['items'] = [dict(r) for r in db.execute('SELECT * FROM items WHERE note_id=?' + ('' if args.command == 'export' or args.all else ' AND deleted=0') + ' ORDER BY id', (note['id'],))]
+            if args.command == 'export':
+                draft = db.execute('SELECT data FROM editor_drafts WHERE note_id=?', (note['id'],)).fetchone()
+                note['editor_draft'] = json.loads(draft['data']) if draft else None
         print(json.dumps(notes, ensure_ascii=False, indent=2))
     elif args.command == 'suggest-slots':
         from .slots import suggest
