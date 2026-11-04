@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from PyQt6.QtCore import QEventLoop, QTimer, Qt
+from PyQt6.QtCore import QEventLoop, QTimer, Qt, QPoint
 from PyQt6.QtWidgets import QApplication, QTextEdit, QPushButton
 from PyQt6.QtGui import QImage, QColor
 from todo_notes import store
@@ -16,6 +16,71 @@ from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, vi
 
 
 class RefreshTest(unittest.TestCase):
+    def test_new_pad_note_stays_off_desktop_until_placed_and_survives_restart(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            editor = NoteEditor(manager)
+            editor.new_note()
+            note_id = editor.selector.currentData()
+            editor.title_field.setText('准备撕下')
+            self.assertIn('准备撕下', editor.selector.currentText())
+            self.assertNotIn(note_id, manager.windows)
+            self.assertEqual(db.execute('SELECT placed FROM notes WHERE id=?', (note_id,)).fetchone()[0], 0)
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
+            db = store.connect()
+            manager = Manager(db)
+            self.assertNotIn(note_id, manager.windows)
+            editor = NoteEditor(manager, note_id)
+            self.assertEqual(editor.title_field.text(), '准备撕下')
+            editor.tear_to(QPoint(500, 300))
+            self.assertIn(note_id, manager.windows)
+            row = db.execute('SELECT title, placed, x, y FROM notes WHERE id=?', (note_id,)).fetchone()
+            note = manager.windows[note_id]
+            self.assertEqual((row['title'], row['placed'], row['x'], row['y']),
+                             ('准备撕下', 1, note.x(), note.y()))
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
+
+    def test_unplaced_note_can_be_deleted_and_restored_with_draft(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            manager = Manager(db)
+            editor = NoteEditor(manager)
+            editor.new_note()
+            note_id = editor.selector.currentData()
+            editor.title_field.setText('待整理')
+            editor.delete_note()
+            self.assertEqual(db.execute('SELECT deleted FROM notes WHERE id=?', (note_id,)).fetchone()[0], 1)
+            desktop_note = next(iter(manager.windows.values()))
+            with patch('todo_notes.gui.QInputDialog.getItem', return_value=(f'便签 #{note_id}: 待整理', True)):
+                desktop_note.restore()
+            editor.reload_choices(note_id)
+            editor.load_note()
+            self.assertEqual(editor.title_field.text(), '待整理')
+            self.assertNotIn(note_id, manager.windows)
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
     def test_editor_merges_changes_to_different_fields(self):
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)

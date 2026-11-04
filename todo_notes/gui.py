@@ -301,6 +301,11 @@ class NoteEditor(QDialog):
         new_button.setObjectName('secondary')
         new_button.clicked.connect(self.new_note)
         selector_row.addWidget(new_button)
+        delete_button = QPushButton('删除')
+        delete_button.setObjectName('secondary')
+        delete_button.setToolTip('删除后可从桌面便签的恢复菜单找回')
+        delete_button.clicked.connect(self.delete_note)
+        selector_row.addWidget(delete_button)
         outer.addLayout(selector_row)
         pad = QFrame()
         pad.setObjectName('pad')
@@ -349,7 +354,7 @@ class NoteEditor(QDialog):
         buttons = QHBoxLayout()
         buttons.addStretch()
         save_button = QPushButton('保存到桌面')
-        save_button.clicked.connect(self.save)
+        save_button.clicked.connect(lambda: self.save())
         buttons.addWidget(save_button)
         form.addLayout(buttons)
         self.reload_choices(note_id)
@@ -360,11 +365,13 @@ class NoteEditor(QDialog):
         self.due_field.textChanged.connect(self.remember_draft)
 
     def reload_choices(self, note_id=None):
+        import json
         self.selector.blockSignals(True)
         self.selector.clear()
-        rows = self.manager.db.execute('SELECT id, title FROM notes WHERE deleted=0 ORDER BY id').fetchall()
+        rows = self.manager.db.execute('SELECT notes.id, notes.title, notes.placed, editor_drafts.data AS draft FROM notes LEFT JOIN editor_drafts ON editor_drafts.note_id=notes.id WHERE notes.deleted=0 ORDER BY notes.id').fetchall()
         for row in rows:
-            self.selector.addItem(row['title'] or '未命名便签', row['id'])
+            name = (json.loads(row['draft'])[0] if row['draft'] else row['title']) or '未命名便签'
+            self.selector.addItem(name if row['placed'] else name + ' · 尚未贴出', row['id'])
         self.selector.setCurrentIndex(max(0, self.selector.findData(note_id)))
         self.selector.blockSignals(False)
 
@@ -374,6 +381,10 @@ class NoteEditor(QDialog):
             return
         values = (self.title_field.text(), self.body_field.toPlainText(), self.due_field.text())
         dirty = values != (self.original['title'], self.original['body'], self.original_due_text)
+        index = self.selector.findData(self.current_id)
+        if index >= 0:
+            name = values[0] or '未命名便签'
+            self.selector.setItemText(index, name if self.current_placed else name + ' · 尚未贴出')
         try:
             if dirty:
                 draft = (*values, self.original, self.original_due_text)
@@ -399,6 +410,7 @@ class NoteEditor(QDialog):
         self.conflict_panel.hide()
         self.conflict_values = {}
         self.current_id = row['id']
+        self.current_placed = bool(row['placed'])
         saved = self.manager.db.execute('SELECT data FROM editor_drafts WHERE note_id=?', (self.current_id,)).fetchone()
         draft = self.drafts.get(self.current_id) or (json.loads(saved['data']) if saved else None)
         self.loading_draft = True
@@ -418,7 +430,7 @@ class NoteEditor(QDialog):
         finally:
             self.loading_draft = False
 
-    def save(self):
+    def save(self, place_at=None):
         from datetime import datetime
         try:
             text = self.due_field.text().strip()
@@ -432,18 +444,17 @@ class NoteEditor(QDialog):
             changed = {key: value for key, value in values.items() if value != self.original[key]}
             expected = {key: self.original[key] for key in changed}
             expected['deleted'] = 0
-            if not changed:
-                # An untouched editor should not overwrite newer data from another entry point.
-                current = self.manager.db.execute('SELECT title FROM notes WHERE id=? AND deleted=0', (self.selector.currentData(),)).fetchone()
-                if current is None:
-                    raise ValueError('note deleted')
-                changed['title'] = current['title']
-                expected['title'] = current['title']
+            changed['placed'] = 1
+            if place_at is not None:
+                note = self.manager.windows.get(self.selector.currentData())
+                row = self.manager.db.execute('SELECT width FROM notes WHERE id=?', (self.selector.currentData(),)).fetchone()
+                width = note.width() if note else row['width']
+                changed.update(x=place_at.x() - width // 2, y=place_at.y() - 20)
             store.update(self.manager.db, self.selector.currentData(), expected=expected,
                          clear_editor_draft=True, **changed)
         except ValueError:
             current = self.manager.db.execute('SELECT * FROM notes WHERE id=? AND deleted=0', (self.selector.currentData(),)).fetchone()
-            self.conflict_values = {key: current[key] for key in changed if current is not None and current[key] != expected[key]}
+            self.conflict_values = {key: current[key] for key in expected if key != 'deleted' and current is not None and current[key] != expected[key]}
             if self.conflict_values:
                 labels = {'title': '任务名称', 'body': '内容', 'due_at': '截止时间'}
                 self.conflict_details.setPlainText('\n\n'.join(labels[key] + '：\n' + (display_time(value) if key == 'due_at' and value else value or '（空）') for key, value in self.conflict_values.items()))
@@ -479,7 +490,7 @@ class NoteEditor(QDialog):
 
     def tear_to(self, point):
         note_id = self.selector.currentData()
-        if not self.save():
+        if not self.save(place_at=point):
             return
         note = self.manager.windows[note_id]
         if note.isMinimized() or not note.isVisible():
@@ -488,10 +499,31 @@ class NoteEditor(QDialog):
         note.raise_()
 
     def new_note(self):
-        note_id = store.create(self.manager.db)
+        note_id = store.create(self.manager.db, placed=False)
         self.manager.refresh()
         self.reload_choices(note_id)
         self.load_note()
+
+    def delete_note(self):
+        window = self.manager.windows.get(self.selector.currentData())
+        if window:
+            window.flush_pending()
+            if window.pending_fields:
+                self.error.setText('桌面便签有未保存的文字，请稍后重试。')
+                return
+        try:
+            store.update(self.manager.db, self.selector.currentData(), deleted=1)
+            if not self.manager.db.execute('SELECT 1 FROM notes WHERE deleted=0 AND placed=1').fetchone():
+                store.create(self.manager.db)
+        except (sqlite3.Error, ValueError):
+            self.manager.db.rollback()
+            self.error.setText('删除失败，请重试；草稿仍保留。')
+            return
+        self.current_id = None
+        self.manager.refresh()
+        self.reload_choices()
+        self.load_note()
+        self.error.setText('已删除，可从桌面便签的恢复菜单找回。')
 
 
 class Note(QWidget):
@@ -786,9 +818,10 @@ class Note(QWidget):
             self.sync_items()
 
     def restore(self):
-        notes = self.manager.db.execute('SELECT id, title FROM notes WHERE deleted=1 ORDER BY id DESC').fetchall()
+        import json
+        notes = self.manager.db.execute('SELECT notes.id, notes.title, editor_drafts.data AS draft FROM notes LEFT JOIN editor_drafts ON editor_drafts.note_id=notes.id WHERE notes.deleted=1 ORDER BY notes.id DESC').fetchall()
         items = self.manager.db.execute('SELECT id, text FROM items WHERE note_id=? AND deleted=1 ORDER BY id DESC', (self.id,)).fetchall()
-        choices = [('便签 #%s: %s' % (r['id'], r['title']), 'note', r['id']) for r in notes]
+        choices = [('便签 #%s: %s' % (r['id'], (json.loads(r['draft'])[0] if r['draft'] else r['title'])), 'note', r['id']) for r in notes]
         choices += [('项目 #%s: %s' % (r['id'], r['text']), 'item', r['id']) for r in items]
         if not choices:
             return
@@ -896,7 +929,7 @@ class Note(QWidget):
         except (sqlite3.Error, ValueError):
             self.item_error('删除便签失败，请重试')
             return
-        if not self.manager.db.execute('SELECT 1 FROM notes WHERE deleted=0').fetchone():
+        if not self.manager.db.execute('SELECT 1 FROM notes WHERE deleted=0 AND placed=1').fetchone():
             store.create(self.manager.db)
         self.manager.refresh()
 
@@ -974,7 +1007,7 @@ class Manager:
         for window in self.windows.values():
             window.flush_pending()
         try:
-            rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0')}
+            rows = {row['id']: row for row in self.db.execute('SELECT * FROM notes WHERE deleted=0 AND placed=1')}
         except sqlite3.Error:
             self.db.rollback()
             for window in self.windows.values():

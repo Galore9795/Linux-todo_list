@@ -57,3 +57,18 @@ assert (note.x(), note.y()) == (target.x() - note.width() // 2, target.y() - 20)
 row = db.execute('SELECT x,y FROM notes WHERE id=?', (note_id,)).fetchone()
 assert (row['x'], row['y']) == (note.x(), note.y())
 print('Native mouse tear and saved drop position: OK')
+editor.new_note()
+fresh_id = editor.selector.currentData()
+editor.title_field.setText('新纸片')
+assert fresh_id not in manager.windows
+QTest.qWait(200)
+start = editor.tear_handle.mapToGlobal(editor.tear_handle.rect().center())
+target = QPoint(430, 210)
+move(start); button(True); move(target)
+assert editor.tear_handle.preview is not None
+button(False); QTest.qWait(400)
+fresh = manager.windows[fresh_id]
+row = db.execute('SELECT title, placed, x, y FROM notes WHERE id=?', (fresh_id,)).fetchone()
+assert (row['title'], row['placed'], row['x'], row['y']) == ('新纸片', 1, fresh.x(), fresh.y())
+assert (fresh.x(), fresh.y()) == (target.x() - fresh.width() // 2, target.y() - 20)
+print('New paper appears only when torn, at the mouse release point: OK')

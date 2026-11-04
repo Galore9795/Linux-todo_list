@@ -20,6 +20,8 @@ def connect():
     for name, default in (('calendar_write_status', 'not_scheduled'), ('calendar_check_status', 'never'), ('item_draft', '')):
         if name not in columns:
             db.execute(f"ALTER TABLE notes ADD COLUMN {name} TEXT NOT NULL DEFAULT '{default}'")
+    if 'placed' not in columns:
+        db.execute('ALTER TABLE notes ADD COLUMN placed INTEGER NOT NULL DEFAULT 1')
     db.commit()
     return db
 
@@ -33,7 +35,7 @@ def notify_change():
     except OSError:
         pass  # The normal polling fallback still notices committed changes.
 
-def create(db, title='', body='', source='', source_file=None):
+def create(db, title='', body='', source='', source_file=None, *, placed=True):
     import random
     import shutil
     import uuid
@@ -54,7 +56,7 @@ def create(db, title='', body='', source='', source_file=None):
             raise
     color = random.choice(['#fff3b0', '#d9f2dc', '#dbeafe', '#fce0e8', '#eee3fa'])
     try:
-        cursor = db.execute('INSERT INTO notes (title, body, color, source, source_file) VALUES (?, ?, ?, ?, ?)', (title, body, color, source, str(copied) if copied else None))
+        cursor = db.execute('INSERT INTO notes (title, body, color, source, source_file, placed) VALUES (?, ?, ?, ?, ?, ?)', (title, body, color, source, str(copied) if copied else None, int(placed)))
         db.commit()
         notify_change()
         return cursor.lastrowid
@@ -66,7 +68,7 @@ def create(db, title='', body='', source='', source_file=None):
 
 
 def update(db, note_id, *, expected=None, clear_editor_draft=False, **fields):
-    allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at', 'item_draft'}
+    allowed = {'title', 'body', 'x', 'y', 'width', 'height', 'pinned', 'collapsed', 'deleted', 'placed', 'source', 'reminder_at', 'start_at', 'end_at', 'due_at', 'item_draft'}
     if not fields or not fields.keys() <= allowed:
         raise ValueError('invalid fields')
     from datetime import datetime

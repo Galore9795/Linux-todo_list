@@ -56,6 +56,7 @@ assert 'ABOVE' in state(normal)[0] and 'HIDDEN' not in state(normal)[0]
 normal.pin(); QTest.qWait(400)
 assert 'ABOVE' not in state(normal)[0] and 'HIDDEN' not in state(normal)[0]
 # Keep other notes from covering the handle under the real pointer.
+normal.move(150, 150)
 pinned.move(550, 100)
 new_note.move(550, 450)
 QTest.qWait(300)
