@@ -29,4 +29,4 @@ for n in 1 2 3 4 5 6 7 8 9 10; do
     sleep 1
 done
 [ -n "$ready" ] || { echo 'Nested window manager did not start.' >&2; exit 1; }
-DISPLAY=:78 TODO_NOTES_NESTED_DISPLAY=:78 PYTHONPATH="$root" python3 "$root/tests/manual_nested_desktop.py"
+DISPLAY=:78 TODO_NOTES_NESTED_DISPLAY=:78 PYTHONPATH="$root" python3 "${1:-$root/tests/manual_nested_desktop.py}"

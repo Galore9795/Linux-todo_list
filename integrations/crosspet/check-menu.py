@@ -21,5 +21,6 @@ assert not menu.grab().isNull()
 with patch('crosspet.ui.subprocess.Popen') as launch:
     action.trigger()
     assert launch.call_args.args[0][0].endswith('/.local/bin/linux-todo-notes')
+    assert launch.call_args.args[0][1:] == ['edit']
 print('Installed menu action, icon and launcher: OK')
 menu.close()

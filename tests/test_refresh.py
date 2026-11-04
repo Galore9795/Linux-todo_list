@@ -12,10 +12,47 @@ from PyQt6.QtCore import QEventLoop, QTimer, Qt
 from PyQt6.QtWidgets import QApplication, QTextEdit, QPushButton
 from PyQt6.QtGui import QImage, QColor
 from todo_notes import store
-from todo_notes.gui import Manager, ScheduleDialog, SourceDialog, visible_position
+from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, visible_position
 
 
 class RefreshTest(unittest.TestCase):
+    def test_editing_pad_saves_three_fields_and_preserves_unsaved_switches(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            first = store.create(db, '第一张', '原文')
+            second = store.create(db, '第二张')
+            manager = Manager(db)
+            editor = NoteEditor(manager, first)
+            editor.title_field.setText('新任务')
+            editor.body_field.setPlainText('要记住的内容')
+            editor.due_field.setText('2026-11-05 18:30')
+            editor.selector.setCurrentIndex(editor.selector.findData(second))
+            editor.selector.setCurrentIndex(editor.selector.findData(first))
+            self.assertEqual(editor.title_field.text(), '新任务')
+            editor.save()
+            row = db.execute('SELECT title, body, due_at FROM notes WHERE id=?', (first,)).fetchone()
+            self.assertEqual((row['title'], row['body']), ('新任务', '要记住的内容'))
+            self.assertIn('2026-11-05T18:30', row['due_at'])
+            self.assertEqual(manager.windows[first].title.text(), '新任务')
+            editor.due_field.setText('无效日期')
+            editor.save()
+            self.assertIn('无法保存', editor.error.text())
+            self.assertEqual(db.execute('SELECT due_at FROM notes WHERE id=?', (first,)).fetchone()[0], row['due_at'])
+            editor.due_field.setText('2026-11-05 18:30')
+            store.update(db, first, body='来自另一个入口')
+            editor.body_field.setPlainText('未保存的编辑')
+            self.assertFalse(editor.save())
+            self.assertEqual(editor.body_field.toPlainText(), '未保存的编辑')
+            self.assertEqual(db.execute('SELECT body FROM notes WHERE id=?', (first,)).fetchone()[0], '来自另一个入口')
+            editor.close()
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            for window in manager.windows.values():
+                window.close()
+            db.close()
+
     def test_screen_position_recovers_only_when_title_is_unreachable(self):
         monitors = [(0, 0, 1920, 1040), (-1280, 0, 1280, 984)]
         self.assertEqual(visible_position(-1000, 120, 300, monitors), (-1000, 120))

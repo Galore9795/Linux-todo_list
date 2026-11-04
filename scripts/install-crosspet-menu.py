@@ -28,13 +28,16 @@ def main():
     svg = ET.parse(Path(__file__).resolve().parent.parent / 'assets/note.svg').getroot()
     paths = ''.join(ET.tostring(child, encoding='unicode').replace('ns0:', '').replace(' xmlns:ns0="http://www.w3.org/2000/svg"', '') for child in svg)
     action = ("        notes = menu.addAction('桌面便签', lambda: subprocess.Popen(\n"
-              "            [str(Path.home() / '.local/bin/linux-todo-notes')],\n"
+              "            [str(Path.home() / '.local/bin/linux-todo-notes'), 'edit'],\n"
               "            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))\n"
               "        notes.setProperty('glassSymbol', 'todo-note')\n"
               "        notes.setEnabled((Path.home() / '.local/bin/linux-todo-notes').is_file())\n")
     symbol = "    'todo-note': " + repr(paths) + ",\n"
     if "notes.setProperty('glassSymbol', 'todo-note')" not in ui_text:
         ui_text = ui_text.replace(menu_anchor, menu_anchor + action)
+    else:
+        old = "[str(Path.home() / '.local/bin/linux-todo-notes')]"
+        ui_text = ui_text.replace(old, "[str(Path.home() / '.local/bin/linux-todo-notes'), 'edit']")
     if "    'todo-note':" not in glass_text:
         glass_text = glass_text.replace(symbol_anchor, symbol_anchor + symbol)
     compile(ui_text, str(ui), 'exec')

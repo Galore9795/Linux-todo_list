@@ -8,6 +8,7 @@ def main():
     parser = argparse.ArgumentParser(description='Linux desktop notes')
     sub = parser.add_subparsers(dest='command')
     sub.add_parser('open', help='open notes independently of Crosspet')
+    sub.add_parser('edit', help='open the notes editing pad')
     sub.add_parser('gui', help='run the notes GUI in the current process')
     sub.add_parser('new', help='create a blank note and start the app if needed')
     add = sub.add_parser('add')
@@ -55,6 +56,12 @@ def main():
     args = parser.parse_args()
     db = store.connect()
     if args.command == 'open':
+        open_independent(db)
+    elif args.command == 'edit':
+        import os
+        from pathlib import Path
+        root = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'linux-todo-notes'
+        (root / 'edit.request').touch()
         open_independent(db)
     elif args.command == 'new':
         store.create(db)
