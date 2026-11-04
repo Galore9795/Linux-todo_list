@@ -1,7 +1,7 @@
 import sys
 import sqlite3
 from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher, QUrl, QPoint
-from PyQt6.QtGui import QGuiApplication, QPixmap, QDesktopServices, QColor, QPainter, QPainterPath, QLinearGradient
+from PyQt6.QtGui import QGuiApplication, QPixmap, QDesktopServices, QColor, QPainter, QPainterPath, QLinearGradient, QPolygon, QRegion
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog, QSizeGrip, QToolButton, QMenu, QComboBox, QFrame
 from . import store
 
@@ -518,7 +518,6 @@ class Note(QWidget):
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.paper_color = QColor(row['color'])
         self.setObjectName('paper')
         self.setStyleSheet("""
@@ -599,7 +598,7 @@ class Note(QWidget):
         desktop_bar_layout.insertWidget(desktop_bar_layout.count() - 1, menu_button)
         self.grip_bar = QWidget()
         grip_layout = QHBoxLayout(self.grip_bar)
-        grip_layout.setContentsMargins(0, 0, 0, 0)
+        grip_layout.setContentsMargins(0, 0, 42, 0)
         grip_layout.addStretch()
         self.resize_grip = PaperResizeGrip(self.grip_bar)
         grip_layout.addWidget(self.resize_grip)
@@ -647,36 +646,45 @@ class Note(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width, height = self.width(), self.height()
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         paper_fill = QLinearGradient(0, 0, 0, height)
         paper_fill.setColorAt(0, self.paper_color.lighter(102))
         paper_fill.setColorAt(.7, self.paper_color)
         paper_fill.setColorAt(1, self.paper_color.darker(104))
-        painter.fillRect(self.rect(), paper_fill)
-        right, bottom = width, height
-        fold = min(40, width // 6, height // 5)
-        hinge, tip = right - fold, bottom - fold
-        shadow = QPainterPath()
-        shadow.moveTo(hinge - 3, bottom)
-        shadow.cubicTo(hinge + 8, bottom - 6, right - 6, tip + 9, right, tip - 2)
-        shadow.lineTo(right, bottom)
-        shadow.closeSubpath()
-        shadow_fill = QLinearGradient(hinge, tip, right, bottom)
-        shadow_fill.setColorAt(0, QColor(50, 38, 29, 0))
-        shadow_fill.setColorAt(1, QColor(50, 38, 29, 32))
-        painter.fillPath(shadow, shadow_fill)
-        corner = QPainterPath()
-        corner.moveTo(hinge, bottom)
-        corner.cubicTo(hinge + 3, bottom - 10, hinge + 4, tip + 10, hinge + 6, tip + 3)
-        corner.cubicTo(hinge + 8, tip - 1, right - 12, tip + 1, right, tip)
-        corner.cubicTo(right - 10, tip + 11, hinge + 14, bottom - 5, hinge, bottom)
-        corner.closeSubpath()
-        corner_fill = QLinearGradient(hinge, bottom, right, tip)
-        corner_fill.setColorAt(0, self.paper_color.darker(112))
-        corner_fill.setColorAt(.65, self.paper_color.lighter(104))
-        corner_fill.setColorAt(1, self.paper_color.lighter(108))
-        painter.fillPath(corner, corner_fill)
-        painter.setPen(QColor(89, 63, 50, 28))
-        painter.drawPath(corner)
+        painter.fillPath(self.paper_path(width, height), paper_fill)
+        cut = min(40, width // 6, height // 5)
+        hinge, tip = width - cut, height - cut
+        flap = QPainterPath()
+        flap.moveTo(hinge, height)
+        flap.cubicTo(hinge + 3, height - 9, hinge + 3, tip + 9, hinge + 5, tip + 3)
+        flap.cubicTo(hinge + 7, tip - 1, width - 10, tip + 1, width, tip)
+        flap.lineTo(hinge, height)
+        flap.closeSubpath()
+        flap_fill = QLinearGradient(hinge, height, width, tip)
+        flap_fill.setColorAt(0, self.paper_color.darker(112))
+        flap_fill.setColorAt(.55, self.paper_color.lighter(104))
+        flap_fill.setColorAt(1, self.paper_color.lighter(108))
+        painter.fillPath(flap, flap_fill)
+        painter.setPen(QColor(89, 63, 50, 38))
+        painter.drawPath(flap)
+
+    @staticmethod
+    def paper_polygon(width, height):
+        cut = min(40, width // 6, height // 5)
+        return QPolygon([QPoint(0, 0), QPoint(width, 0), QPoint(width, height - cut),
+                         QPoint(width - cut, height), QPoint(0, height)])
+
+    @classmethod
+    def paper_path(cls, width, height):
+        path = QPainterPath()
+        polygon = cls.paper_polygon(width, height)
+        path.moveTo(polygon[0].x(), polygon[0].y())
+        for point in polygon[1:]:
+            path.lineTo(point.x(), point.y())
+        path.closeSubpath()
+        return path
 
     def save_field(self, key, value):
         if self.loading:
@@ -985,6 +993,7 @@ class Note(QWidget):
         super().moveEvent(event)
 
     def resizeEvent(self, event):
+        self.setMask(QRegion(self.paper_polygon(self.width(), self.height())))
         if not self.loading and self.body.isVisible():
             try:
                 store.update(self.manager.db, self.id, width=self.width(), height=self.height())
