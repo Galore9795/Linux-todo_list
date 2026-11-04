@@ -87,7 +87,7 @@ Crosspet 入口：运行 `python3 scripts/install-crosspet-menu.py` 将“桌面
 
 本机 X11 窗口顺序测试：普通窗口能遮挡未置顶便签；置顶后便签位于测试普通窗口和测试全屏窗口上层。此结果针对当前 GNOME/X11，不代表所有桌面环境行为相同。
 
-便签恢复时及屏幕可用区域变化后，会将完全离开屏幕的标题栏移回可操作范围；多显示器热插拔仍需在真实设备上验证。
+便签恢复时及屏幕可用区域变化后，会将完全离开屏幕的标题栏移回可操作范围；已在隔离 GNOME 中实际缩小虚拟显示分辨率，验证便签仍可操作且位置保存。真实多显示器热插拔仍待验证。
 
 聊天安排时，可把刚读取的完整日历事件 JSON（数组或含 `events` 的结果）通过标准输入传给 `suggest-slots --day YYYY-MM-DD --zone Asia/Hong_Kong --work-start 09:00 --work-end 18:00 --duration 60 --buffer 15`，得到当天候选时段。此计算不联网、不写日历；需要使用实际工作时段和最新完整日历结果，确认后再写入。
 
@@ -132,3 +132,5 @@ Crosspet 右键实测：`./tests/run_nested_desktop.sh tests/manual_crosspet_men
 纸张参考：[墙面便签实拍](https://qz.com/894564/your-daily-to-do-list-should-fit-on-a-post-it-note-and-other-practical-productivity-tips)、[单角翘起的便签](https://depositphotos.com/photo/blank-yellow-sticky-note-white-background-top-view-617147242.html)及[纸张折角参考](https://store.oliviarodrigo.com/pages/festival)。参考纸张轮廓、折角和阴影，用程序自行绘制，未复制图片素材。浅色与深色背景验证：`./tests/run_nested_desktop.sh tests/manual_paper_surface.py`。
 
 针对部分桌面出现的额外背板，X11 窗口的形状现在避开右下角缺口，并禁用系统窗口阴影；缺口透出桌面，也不会拦截鼠标。
+
+隔离分辨率变化测试：`./tests/run_nested_desktop.sh tests/manual_resolution.py`，测试会在独立桌面缩小并恢复虚拟分辨率，不修改当前主桌面的显示设置。
