@@ -12,7 +12,7 @@ from PyQt6.QtCore import QEventLoop, QTimer, Qt, QPoint
 from PyQt6.QtWidgets import QApplication, QTextEdit, QPushButton
 from PyQt6.QtGui import QImage, QColor
 from todo_notes import store
-from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, visible_position
+from todo_notes.gui import Manager, NoteEditor, ScheduleDialog, SourceDialog, visible_position, PAPER_MARGIN
 
 
 class RefreshTest(unittest.TestCase):
@@ -297,6 +297,37 @@ class RefreshTest(unittest.TestCase):
         self.assertEqual(visible_position(-1000, 120, 300, monitors[:1]), (-236, 120))
         self.assertEqual(visible_position(200, 1400, 300, monitors[:1]), (200, 1000))
         self.assertEqual(visible_position(200, 1400, 300, []), (200, 1400))
+
+    def test_paper_margin_keeps_shadow_room_and_persists_paper_size(self):
+        app = QApplication.instance() or QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'XDG_DATA_HOME': root}):
+            db = store.connect()
+            note_id = store.create(db, 'margin')
+            manager = Manager(db)
+            note = manager.windows[note_id]
+            self.assertEqual(note.paper_width, note.width() - 2 * PAPER_MARGIN)
+            mask = note.mask()
+            self.assertTrue(mask.contains(QPoint(2, 2)), 'Shadow margin must stay paintable')
+            self.assertTrue(mask.contains(QPoint(PAPER_MARGIN + 10, PAPER_MARGIN + 10)))
+            self.assertFalse(mask.contains(QPoint(note.width() - PAPER_MARGIN - 4,
+                                                  note.height() - PAPER_MARGIN - 4)))
+            note.resize(500, 500)
+            app.processEvents()
+            row = db.execute('SELECT width, height FROM notes WHERE id=?', (note_id,)).fetchone()
+            self.assertEqual(tuple(row), (500 - 2 * PAPER_MARGIN, 500 - 2 * PAPER_MARGIN))
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            note.close()
+            db.close()
+            db = store.connect()
+            manager = Manager(db)
+            note = manager.windows[note_id]
+            self.assertEqual((note.width(), note.height()), (500, 500))
+            manager.timer.stop()
+            manager.watcher.removePaths(manager.watcher.files())
+            note.close()
+            db.close()
 
     def test_collapse_restores_size_and_survives_restart(self):
         app = QApplication.instance() or QApplication([])

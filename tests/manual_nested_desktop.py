@@ -75,7 +75,7 @@ size=normal.size();point=normal.resize_grip.mapToGlobal(normal.resize_grip.rect(
 move_pointer(point);button(True);move_pointer(point+QPoint(60,40));button(False);QTest.qWait(250)
 assert normal.size()!=size
 saved=db.execute('SELECT x,y,width,height FROM notes WHERE id=?',(normal.id,)).fetchone()
-assert (saved['x'],saved['y'],saved['width'],saved['height']) == (normal.x(),normal.y(),normal.width(),normal.height())
+assert (saved['x'],saved['y'],saved['width'],saved['height']) == (normal.x(),normal.y(),normal.paper_width,normal.paper_height)
 print('drag and resize on desktop:', normal.x(), normal.y(), normal.width(), normal.height())
 normal.collapse(); QTest.qWait(200)
 assert normal.body.isHidden() and normal.grip_bar.isHidden()

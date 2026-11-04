@@ -1,9 +1,13 @@
 import sys
 import sqlite3
 from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher, QUrl, QPoint
-from PyQt6.QtGui import QGuiApplication, QPixmap, QDesktopServices, QColor, QPainter, QPainterPath, QLinearGradient, QPolygon, QRegion
+from PyQt6.QtGui import QGuiApplication, QPixmap, QDesktopServices, QColor, QPainter, QPainterPath, QLinearGradient, QPolygon, QRegion, QPen
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QPushButton, QListWidget, QListWidgetItem, QInputDialog, QLabel, QDialog, QFormLayout, QDialogButtonBox, QFileDialog, QSizeGrip, QToolButton, QMenu, QComboBox, QFrame
 from . import store
+
+
+# Transparent room around the paper for the app-drawn shadow.
+PAPER_MARGIN = 16
 
 
 def display_time(value):
@@ -423,8 +427,8 @@ class NoteEditor(QDialog):
             if place_at is not None:
                 note = self.manager.windows.get(self.selector.currentData())
                 row = self.manager.db.execute('SELECT width FROM notes WHERE id=?', (self.selector.currentData(),)).fetchone()
-                width = note.width() if note else row['width']
-                changed.update(x=place_at.x() - width // 2, y=place_at.y() - 20)
+                width = note.paper_width if note else row['width']
+                changed.update(x=place_at.x() - width // 2 - PAPER_MARGIN, y=place_at.y() - 20 - PAPER_MARGIN)
             store.update(self.manager.db, self.selector.currentData(), expected=expected,
                          clear_editor_draft=True, **changed)
         except ValueError:
@@ -470,7 +474,7 @@ class NoteEditor(QDialog):
         note = self.manager.windows[note_id]
         if note.isMinimized() or not note.isVisible():
             note.showNormal()
-        note.move(point - QPoint(note.width() // 2, 20))
+        note.move(point - QPoint(note.paper_width // 2 + PAPER_MARGIN, 20 + PAPER_MARGIN))
         note.raise_()
 
     def new_note(self):
@@ -534,7 +538,7 @@ class Note(QWidget):
             QDialog QPushButton:hover { background: #684e44; }
         """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(17, 10, 22, 30)
+        layout.setContentsMargins(17 + PAPER_MARGIN, 10 + PAPER_MARGIN, 22 + PAPER_MARGIN, 30 + PAPER_MARGIN)
         layout.setSpacing(5)
         self.desktop_bar = QWidget()
         desktop_bar_layout = QHBoxLayout(self.desktop_bar)
@@ -605,7 +609,7 @@ class Note(QWidget):
         layout.addWidget(self.grip_bar)
         self.title.textChanged.connect(lambda text: self.save_field('title', text))
         self.body.textChanged.connect(lambda: self.save_field('body', self.body.toPlainText()))
-        self.resize(row['width'], row['height'])
+        self.resize(row['width'] + 2 * PAPER_MARGIN, row['height'] + 2 * PAPER_MARGIN)
         if row['x'] is not None and row['y'] is not None:
             self.move(row['x'], row['y'])
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, bool(row['pinned']))
@@ -642,33 +646,63 @@ class Note(QWidget):
         if row['collapsed']:
             QTimer.singleShot(0, self.adjustSize)
 
+    @property
+    def paper_width(self):
+        return max(1, self.width() - 2 * PAPER_MARGIN)
+
+    @property
+    def paper_height(self):
+        return max(1, self.height() - 2 * PAPER_MARGIN)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        width, height = self.width(), self.height()
+        paper_width, paper_height = self.paper_width, self.paper_height
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-        paper_fill = QLinearGradient(0, 0, 0, height)
+        self.draw_shadow(painter, paper_width, paper_height)
+        painter.save()
+        painter.translate(PAPER_MARGIN, PAPER_MARGIN)
+        paper_fill = QLinearGradient(0, 0, 0, paper_height)
         paper_fill.setColorAt(0, self.paper_color.lighter(102))
         paper_fill.setColorAt(.7, self.paper_color)
         paper_fill.setColorAt(1, self.paper_color.darker(104))
-        painter.fillPath(self.paper_path(width, height), paper_fill)
-        cut = min(40, width // 6, height // 5)
-        hinge, tip = width - cut, height - cut
-        flap = QPainterPath()
-        flap.moveTo(hinge, height)
-        flap.cubicTo(hinge + 3, height - 9, hinge + 3, tip + 9, hinge + 5, tip + 3)
-        flap.cubicTo(hinge + 7, tip - 1, width - 10, tip + 1, width, tip)
-        flap.lineTo(hinge, height)
-        flap.closeSubpath()
-        flap_fill = QLinearGradient(hinge, height, width, tip)
-        flap_fill.setColorAt(0, self.paper_color.darker(112))
-        flap_fill.setColorAt(.55, self.paper_color.lighter(104))
-        flap_fill.setColorAt(1, self.paper_color.lighter(108))
-        painter.fillPath(flap, flap_fill)
-        painter.setPen(QColor(89, 63, 50, 38))
-        painter.drawPath(flap)
+        path = self.paper_path(paper_width, paper_height)
+        painter.fillPath(path, paper_fill)
+        cut = min(40, paper_width // 6, paper_height // 5)
+        if cut >= 2:
+            hinge, tip = paper_width - cut, paper_height - cut
+            fold = QPainterPath()
+            fold.moveTo(hinge, paper_height)
+            fold.lineTo(paper_width, tip)
+            fold.lineTo(hinge, tip)
+            fold.closeSubpath()
+            fold_fill = QLinearGradient(hinge, paper_height, paper_width, tip)
+            fold_fill.setColorAt(0, self.paper_color.darker(105))
+            fold_fill.setColorAt(.55, self.paper_color.lighter(103))
+            fold_fill.setColorAt(1, self.paper_color.lighter(106))
+            painter.fillPath(fold, fold_fill)
+            painter.setPen(QPen(QColor(70, 50, 40, 26), 6))
+            painter.drawLine(QPoint(hinge + 4, paper_height - 4), QPoint(paper_width - 4, tip + 4))
+            painter.setPen(QPen(QColor(89, 63, 50, 50), 1))
+            painter.drawLine(QPoint(hinge, paper_height), QPoint(paper_width, tip))
+            painter.drawLine(QPoint(hinge, paper_height), QPoint(hinge, tip))
+            painter.drawLine(QPoint(hinge, tip), QPoint(paper_width, tip))
+        painter.restore()
+
+    def draw_shadow(self, painter, width, height):
+        path = self.paper_path(width, height)
+        painter.save()
+        painter.translate(PAPER_MARGIN + 3, PAPER_MARGIN + 5)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for stroke, alpha in ((20, 5), (16, 7), (12, 9), (8, 11), (4, 13)):
+            pen = QPen(QColor(43, 34, 28, alpha), stroke)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawPath(path)
+        painter.restore()
 
     @staticmethod
     def paper_polygon(width, height):
@@ -685,6 +719,20 @@ class Note(QWidget):
             path.lineTo(point.x(), point.y())
         path.closeSubpath()
         return path
+
+    def apply_window_shape(self):
+        width, height = self.paper_width, self.paper_height
+        cut = min(40, width // 6, height // 5)
+        hole = QRegion(QPolygon([
+            QPoint(PAPER_MARGIN + width - cut, PAPER_MARGIN + height),
+            QPoint(PAPER_MARGIN + width, PAPER_MARGIN + height - cut),
+            QPoint(PAPER_MARGIN + width, PAPER_MARGIN + height),
+        ]))
+        self.setMask(QRegion(self.rect()).subtracted(hole))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.apply_window_shape()
 
     def save_field(self, key, value):
         if self.loading:
@@ -978,6 +1026,7 @@ class Note(QWidget):
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, self.pinned)
             if was_visible:
                 self.show()
+        self.apply_window_shape()
 
     def ensure_visible(self):
         x, y = visible_position(self.x(), self.y(), self.width(), screen_areas())
@@ -993,10 +1042,10 @@ class Note(QWidget):
         super().moveEvent(event)
 
     def resizeEvent(self, event):
-        self.setMask(QRegion(self.paper_polygon(self.width(), self.height())))
+        self.apply_window_shape()
         if not self.loading and self.body.isVisible():
             try:
-                store.update(self.manager.db, self.id, width=self.width(), height=self.height())
+                store.update(self.manager.db, self.id, width=self.paper_width, height=self.paper_height)
             except (sqlite3.Error, ValueError):
                 self.manager.db.rollback()
         super().resizeEvent(event)
@@ -1022,6 +1071,7 @@ class Note(QWidget):
         if not self.desktop_mode:
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, pinned)
             self.show()
+            self.apply_window_shape()
         self.pin_button.setText('取消置顶' if pinned else '置顶')
 
     def collapse(self):
@@ -1042,7 +1092,7 @@ class Note(QWidget):
         store.update(self.manager.db, self.id, collapsed=int(not visible))
         if visible:
             row = self.manager.db.execute('SELECT width, height FROM notes WHERE id=?', (self.id,)).fetchone()
-            self.resize(row['width'], row['height'])
+            self.resize(row['width'] + 2 * PAPER_MARGIN, row['height'] + 2 * PAPER_MARGIN)
         else:
             self.adjustSize()
         self.loading = False
@@ -1171,6 +1221,8 @@ class Manager:
 
 
 def run(db):
+    # Stable X11 identity for desktop rules such as the rounded-corners blacklist.
+    sys.argv[0] = 'linux-todo-notes'
     app = QApplication(sys.argv)
     manager = Manager(db)
     sys.exit(app.exec())

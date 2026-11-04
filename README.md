@@ -122,7 +122,7 @@ Crosspet 的 Cursor 钩子配置可用 `python3 scripts/cursor-hook-config.py --
 
 桌面便签是无边框纸张，右下角折回一小块纸背，缺口透出桌面；顶部操作栏可拖动、隐藏、置顶、收起，更多操作在菜单中。可继续在桌面直接编辑文字和清单。编辑页输入会作为草稿自动保存在本机，切换便签或重启后可恢复；保存失败会保留输入并显示提示；不同入口修改不同字段时可合并，同一字段有冲突时会显示桌面的最新内容，保留草稿供对照和继续编辑。导出的备份也包含这些草稿。
 
-自动检查：`python3 -m unittest discover -s tests -q`；隔离 GNOME/X11 操作测试：`./tests/run_nested_desktop.sh` 及 `./tests/run_nested_desktop.sh tests/manual_editor.py`；窗口可读性检查：`./tests/run_nested_desktop.sh tests/manual_dialogs.py`。编辑器测试在独立测试桌面用鼠标事件验证拖拽落点，不操作用户当前工作区。
+自动检查：`python3 -m unittest discover -s tests -q`（当前 41 项）；隔离 GNOME/X11 操作测试：`./tests/run_nested_desktop.sh` 及 `./tests/run_nested_desktop.sh tests/manual_editor.py`；纸张阴影、折角、缺口穿透检查：`./tests/run_nested_desktop.sh tests/manual_paper_surface.py`；窗口可读性检查：`./tests/run_nested_desktop.sh tests/manual_dialogs.py`。编辑器测试在独立测试桌面用鼠标事件验证拖拽落点，不操作用户当前工作区。
 
 桌面便签文字若与其他入口同时修改同一字段，不会自动覆盖：当前输入保留在窗口，使用便签菜单的“处理文字冲突”可对照并选择保留哪一份。冲突草稿正常写入本地后可在重启后恢复，备份也会包含；若本地写入失败，界面会提示并重试。
 
@@ -130,10 +130,12 @@ Crosspet 右键实测：`./tests/run_nested_desktop.sh tests/manual_crosspet_men
 
 当前桌面验收：`tests/manual_current_desktop.py` 在临时 `XDG_DATA_HOME` 下分 setup、verify 两步运行，先由另一个目录写入“准备演示”便签；需设置 `TODO_NOTES_LIVE_DESKTOP=1`，脚本会拒绝使用真实应用数据目录。2026-11-04 已在本机 GNOME/X11 桌面跑通文字写入、便签出现、编辑勾选、置顶、重启恢复及另一项目写入；会短暂打开测试便签，不读写真实任务数据。真实数据、截图来源和 Crosspet 实际入口仍未验收。
 
-本机便签服务在 GNOME 会话重启后不会自动启动；再次从 Crosspet 菜单或运行 `linux-todo-notes open` 即可，便签、草稿和位置从本地数据库恢复。自动对话钩子仍未启用，普通 Chat 接入和真实多显示器热插拔仍待验证。
+本机便签服务已重启并载入上述纸张、阴影和折角代码；再次从 Crosspet 菜单或运行 `linux-todo-notes open` 可打开。自动对话钩子仍未启用，普通 Chat 接入和真实多显示器热插拔仍待验证。
 
 纸张参考：[墙面便签实拍](https://qz.com/894564/your-daily-to-do-list-should-fit-on-a-post-it-note-and-other-practical-productivity-tips)、[单角翘起的便签](https://depositphotos.com/photo/blank-yellow-sticky-note-white-background-top-view-617147242.html)及[纸张折角参考](https://store.oliviarodrigo.com/pages/festival)。参考纸张轮廓、折角和阴影，用程序自行绘制，未复制图片素材。浅色与深色背景验证：`./tests/run_nested_desktop.sh tests/manual_paper_surface.py`。
 
-针对部分桌面出现的额外背板，X11 窗口的形状现在避开右下角缺口，并禁用系统窗口阴影；缺口透出桌面，也不会拦截鼠标。
+窗口外圈现在有 16px 透明阴影边距，纸面尺寸和文字区域不变；阴影由便签自己绘制，跟随纸面五边形，右下角的折回纸背画在纸面内侧。缺口仍从窗口形状中裁掉，透出桌面并可点击穿透。透明阴影边距本身仍属于窗口，点在这 16px 内会算点中便签；缺口不受影响。
+
+本机启用了 `rounded-window-corners`，它曾把矩形窗口阴影透过缺口显示成一块玻璃背板。便签现在使用 `linux-todo-notes` 作为 WM_CLASS，并已把该类加入 RWC 黑名单；其他窗口的圆角/阴影不受影响。若重装或重置该扩展，需要把 `linux-todo-notes` 重新加入黑名单。
 
 隔离分辨率变化测试：`./tests/run_nested_desktop.sh tests/manual_resolution.py`，测试会在独立桌面缩小并恢复虚拟分辨率，不修改当前主桌面的显示设置。

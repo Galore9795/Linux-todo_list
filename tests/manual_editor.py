@@ -2,7 +2,7 @@ import os, tempfile
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtTest import QTest
 from todo_notes import store
-from todo_notes.gui import Manager
+from todo_notes.gui import Manager, PAPER_MARGIN
 if not os.environ.get('TODO_NOTES_NESTED_DISPLAY') or os.environ.get('TODO_NOTES_NESTED_DISPLAY') != os.environ.get('DISPLAY'):
     raise SystemExit('Run only using run_nested_desktop.sh')
 tmp = tempfile.TemporaryDirectory()
@@ -54,7 +54,7 @@ if os.environ.get('TODO_NOTES_DRAG_SCREENSHOT'):
     app.primaryScreen().grabWindow(0).save(os.environ['TODO_NOTES_DRAG_SCREENSHOT'])
 button(False); QTest.qWait(400)
 note = manager.windows[note_id]
-assert (note.x(), note.y()) == (target.x() - note.width() // 2, target.y() - 20), (note.pos(), target)
+assert (note.x(), note.y()) == (target.x() - note.width() // 2, target.y() - 20 - PAPER_MARGIN), (note.pos(), target)
 row = db.execute('SELECT x,y FROM notes WHERE id=?', (note_id,)).fetchone()
 assert (row['x'], row['y']) == (note.x(), note.y())
 print('Native mouse tear and saved drop position: OK')
@@ -72,5 +72,5 @@ button(False); QTest.qWait(400)
 fresh = manager.windows[fresh_id]
 row = db.execute('SELECT title, placed, x, y FROM notes WHERE id=?', (fresh_id,)).fetchone()
 assert (row['title'], row['placed'], row['x'], row['y']) == ('新纸片', 1, fresh.x(), fresh.y())
-assert (fresh.x(), fresh.y()) == (target.x() - fresh.width() // 2, target.y() - 20)
+assert (fresh.x(), fresh.y()) == (target.x() - fresh.width() // 2, target.y() - 20 - PAPER_MARGIN)
 print('New paper appears only when torn, at the mouse release point: OK')
