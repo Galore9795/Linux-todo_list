@@ -121,7 +121,7 @@ def open_independent(db):
     for name in ('DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_DATA_HOME', 'TODO_NOTES_DATA_DIR', 'PYTHONPATH'):
         if name in os.environ:
             command.append('--setenv=' + name + '=' + os.environ[name])
-    command += [sys.executable, '-m', 'todo_notes', 'gui']
+    command += gui_command()
     try:
         result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         if result.returncode == 0:

@@ -1,42 +1,62 @@
-# Windows / macOS 安装
+# 下载、安装与升级
 
-## 下载桌面版
+到 [GitHub Releases 最新版本](https://github.com/Galore9795/Linux-todo_list/releases/latest) 下载适合你系统的桌面包。包内含应用运行所需的 Python 和 Qt 程序库；无需单独安装 Python、开发工具或 Agent。
 
-在 GitHub 仓库的 **Actions → Desktop builds → 最新成功运行 → Artifacts** 下载对应压缩包：
+## Windows x64
 
-- `TodoNotes-windows-latest`：Windows x64；解压后运行 `TodoNotes/TodoNotes.exe`。
-- `TodoNotes-macos-15`：Apple Silicon；解压后将 `TodoNotes.app` 拖入“应用程序”。
-- `TodoNotes-macos-15-intel`：Intel Mac；操作相同。
+1. 下载 `TodoNotes-windows-x86_64.zip` 并解压整个文件夹。
+2. 双击 `TodoNotes\TodoNotes.exe` 启动。需要桌面快捷方式时，为这个 EXE 创建快捷方式；不要单独移动 EXE。
+3. 升级时退出程序，解压新版并替换旧程序文件夹。
 
-下载的 artifact ZIP 内还有一个 `TodoNotes-系统-架构.zip`，再解压一层。Windows 可为 EXE 创建桌面快捷方式；不要只移动 EXE，需保留同目录的 `_internal`。macOS 请用 Finder 或“归档实用工具”解压，以保留程序权限。
+Windows SmartScreen 可能提示未识别的发布者，因为当前程序未签名。确认文件来自本仓库 Releases 后，可在提示中选择“更多信息”并运行；无需关闭 Windows 安全功能。
 
-构建未使用付费开发者证书签名或 Apple 公证。Windows 可能显示 SmartScreen 提示；macOS 如被拦截，在“系统设置 → 隐私与安全性”查看该应用的“仍要打开”。
+## macOS Apple Silicon / Intel
 
-每个包还包含独立的命令行版本，可供本机 agent 调用：
+1. Apple Silicon 下载 `TodoNotes-macos-arm64.dmg`；Intel 下载 `TodoNotes-macos-x86_64.dmg`。
+2. 打开 DMG，将 `TodoNotes` 拖入 `Applications`，然后从 Launchpad 或 Applications 启动。
+3. 升级时退出应用，将新版拖入 Applications 并选择替换。便签保存在用户资料目录，不会随应用替换而删除。
 
-```powershell
-# Windows，在解压目录运行
-.\todo-notes-cli\todo-notes-cli.exe add "准备演示" --body "检查材料"
-.\todo-notes-cli\todo-notes-cli.exe edit
-```
+命令行版本随应用安装，可从终端运行 `/Applications/TodoNotes.app/Contents/Resources/todo-notes-cli/todo-notes-cli list`；它与应用共用便签数据。
+
+应用未使用 Apple 开发者证书签名或公证，因此 macOS 可能拦截首次打开。确认从本仓库 Releases 下载后，在“系统设置 → 隐私与安全性”查看该应用的“仍要打开”选项；不要关闭 Gatekeeper。
+
+## Linux x86_64
+
+1. 下载 `TodoNotes-linux-x86_64.tar.gz` 并解压。
+2. 在解压目录运行 `./install.sh`。安装脚本将应用菜单项和程序文件放到当前用户目录，不需要管理员权限或 Python。
+3. 从应用菜单打开 **Desktop Todo Notes**。升级时退出程序、解压新版并再次运行 `./install.sh`；本地便签和截图不会被覆盖。
+
+CLI 同样包含在包内，安装后可从终端运行：
 
 ```sh
-# macOS，在解压目录运行
-./todo-notes-cli/todo-notes-cli add '准备演示' --body '检查材料'
-./todo-notes-cli/todo-notes-cli edit
+linux-todo-notes-cli add '准备演示' --body '检查材料'
+linux-todo-notes-cli list
+linux-todo-notes-cli edit
 ```
 
-GUI 和 CLI 共享同一份本机数据，程序升级或更换文件夹不会清除便签。
+## GUI、CLI 与数据
 
-## 从源码运行
+各平台 GUI 和 CLI 使用同一份 SQLite 数据，命令行写入后运行中的界面会刷新。数据与程序文件分开保存：
 
-需要 Python 3.10 或更新版本。Windows 可使用 `py` 替代以下 `python`；macOS 通常使用 `python3`。
+| 系统 | 默认便签数据目录 |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\linux-todo-notes` |
+| macOS | `~/Library/Application Support/linux-todo-notes` |
+| Linux | `~/.local/share/linux-todo-notes` |
+
+`TODO_NOTES_DATA_DIR` 可指定完整目录；`XDG_DATA_HOME` 可用于 Linux 和隔离测试。升级程序不迁移、不覆盖这份数据。迁移电脑时，先退出应用，再复制整个 `linux-todo-notes` 目录，来源截图也在其中。
+
+Windows 和 macOS 使用原生 Qt 窗口；拖动、缩放、置顶、折叠、草稿与恢复功能共用现有实现。“显示桌面”、全屏窗口层级、Spaces/虚拟桌面以及纸角缺口的点击穿透尚未在 Windows/macOS 桌面环境实测，行为可能因系统和窗口管理器而异。Linux 的显示桌面适配仅针对 X11；Crosspet 右键菜单也是本仓库的 Linux 定制，不代表其他系统支持 Crosspet 集成。
+
+## 从源码安装（开发者）
+
+需要 Python 3.10 或更新版本：
 
 ```sh
 python -m venv .venv
 ```
 
-Windows：
+Windows PowerShell：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install .
@@ -52,24 +72,4 @@ macOS：
 .venv/bin/todo-notes list
 ```
 
-也可以在安装依赖后直接运行 `python -m todo_notes edit`。Linux 的 `scripts/install-local.sh` 和原 `linux-todo-notes` 命令仍保留。
-
-## 数据位置
-
-| 系统 | 默认目录 |
-| --- | --- |
-| Windows | `%LOCALAPPDATA%\linux-todo-notes` |
-| macOS | `~/Library/Application Support/linux-todo-notes` |
-| Linux | `~/.local/share/linux-todo-notes` |
-
-`TODO_NOTES_DATA_DIR` 可指定完整数据目录；已有 `XDG_DATA_HOME` 设置仍优先于系统默认目录，并在其下使用 `linux-todo-notes` 子目录。任务、草稿、截图和刷新信号都使用同一目录。数据库格式保持一致；迁移需先退出程序，再复制完整目录。原来已运行的 Linux 版本升级后须退出并重启，以切换到跨平台单实例锁。
-
-## 功能与系统差异
-
-三种系统共用便签本、纸张样式、清单、拖动缩放、置顶、折叠、草稿与删除恢复、来源截图、备份和日历状态字段。Windows/macOS 使用原生 Qt 窗口；“显示桌面”、全屏层级、Spaces/虚拟桌面及缺口点击穿透需在实际桌面验收。GNOME/X11 特有的“显示桌面仍可见”适配只在 Linux X11 启用。
-
-仓库现有 Crosspet 菜单补丁、安装脚本与 Cursor 桥属于 Linux 定制；未移植成 Windows/macOS Crosspet 补丁。新平台可以直接使用独立桌面入口和 CLI。聊天日历实际读写仍由有权限的聊天环境执行，程序本身不持有 iCloud 凭证；后台同步仍暂缓。
-
-## 自行构建
-
-在对应系统中安装 `python -m pip install . pyinstaller`，运行 `python scripts/build-desktop.py`。压缩包生成在 `dist/`，无需用户电脑在线即可由 GitHub Actions 构建。流水线检查自动测试、打包后 CLI 的中文写入与读取，以及打包后 GUI 的启动和重复启动。
+Linux 现有源码安装和 Crosspet 集成仍保留，见 [README.md](README.md)。

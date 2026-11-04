@@ -4,11 +4,13 @@
 
 ## Windows / macOS 适配（2026-11-04）
 
-按本次用户要求扩展平台范围，保留现有 Python / Qt / SQLite 实现。新增原生数据目录和统一路径模块，单实例改为 Qt QLockFile；Windows/macOS 从 CLI 独立启动 GUI，不调用 systemd。增加 pip 安装入口、PyInstaller 桌面与命令行打包脚本，以及 Windows x64、macOS Apple Silicon/Intel、Linux 的自动测试流水线。下载与运行方式见 INSTALL.md。
+保留现有 Python / Qt / SQLite 与 Linux 数据兼容；版本设为 0.3.0。提供 Windows x64 ZIP、Apple Silicon/Intel DMG、Linux x86_64 tar.gz 的原生构建。Linux 安装脚本将程序装入用户目录并注册应用菜单入口；GUI、CLI 及刷新信号共用原有数据目录。程序目录与便签数据分开，更新只替换程序文件。
 
-云端 Linux 已通过 44 项自动测试和 Python 编译检查，并验证可编辑 pip 安装；Windows/macOS 原生测试及打包结果以新增 Actions 为准。
+GitHub Actions 已配置四个原生构建目标；版本标签触发后，全部测试和打包成功才创建 Release 并附上各平台成品。新增版本标签尚未推送，远端 CI 和 Release 尚未运行/生成。Windows/macOS 原生构建与桌面交互仍待该流水线及对应设备验证。
 
-Linux 专有 X11 行为和既有 Crosspet 补丁保留。Windows/macOS 的显示桌面、全屏、虚拟桌面、多屏和缺口穿透尚未实机验收；日历、普通 Chat 与 Crosspet 跨平台集成的未完成事项仍如原记录，不因源码适配而视为完成。
+本机 Linux x86_64：45 项自动测试通过；PyInstaller 发行包已构建，冻结版 CLI 中文写入/读回与 GUI 首次启动、重复启动冒烟检查通过。Qt 界面测试覆盖中文输入框保存、重启草稿和外部写入刷新；冻结版 CLI 写入由同一数据库读取。实际打包版桌面中文键盘输入的手动验收仍待完成。
+
+Linux 专有 X11 行为和既有 Crosspet 补丁保留。Windows/macOS 的显示桌面、全屏、虚拟桌面、多屏和缺口穿透尚未实机验收；日历、普通 Chat 与 Crosspet 跨平台集成的未完成事项仍如原记录，不因源码适配而视为完成。未签名构建可能触发系统提示；当前没有 Windows/Apple 签名证书。
 
 ## 开发原则
 

@@ -4,9 +4,20 @@
 
 发一段文字或一张截图，整理成带描述的勾选清单。普通便签留在桌面，重要事项用图钉置顶，在工作时也能看见。
 
-## Windows / macOS
+## 下载桌面版
 
-Windows x64、Apple Silicon 和 Intel Mac 的原生构建入口、源码安装及下载方法见 [安装说明](INSTALL.md)。共用现有 PyQt6 / SQLite 功能；使用各系统的数据目录、跨平台单实例锁和独立进程启动。GitHub Actions 自动运行测试并生成独立桌面包与 CLI；平台构建结果以 Actions 为准，真实桌面行为尚需各系统实测。现有 Crosspet 定制仍限 Linux。
+打开 [GitHub Releases 最新版本](https://github.com/Galore9795/Linux-todo_list/releases/latest)，按系统下载并安装：
+
+| 系统 | 下载文件 | 安装与启动 |
+| --- | --- | --- |
+| Windows x64 | `TodoNotes-windows-x86_64.zip` | 解压后双击 `TodoNotes\TodoNotes.exe` |
+| macOS Apple Silicon | `TodoNotes-macos-arm64.dmg` | 打开 DMG，将 TodoNotes 拖到 Applications |
+| macOS Intel | `TodoNotes-macos-x86_64.dmg` | 打开 DMG，将 TodoNotes 拖到 Applications |
+| Linux x86_64 | `TodoNotes-linux-x86_64.tar.gz` | 解压后运行 `./install.sh`，再从应用菜单打开 |
+
+以上桌面包包含运行所需的 Python 和 Qt 程序库，不需要安装开发环境。CLI 也包含在包中，和 GUI 共用本机便签数据。升级程序不会覆盖便签。详细步骤和系统安全提示见 [INSTALL.md](INSTALL.md)。
+
+发行包由 GitHub Actions 在对应系统原生构建，并在所有平台测试通过后随版本标签发布。未签名程序可能触发 Windows SmartScreen 或 macOS Gatekeeper 提示，处理方式见安装说明。Linux Crosspet 右键入口只支持本项目现有的 Linux 定制，Windows 和 macOS 不提供该集成。
 
 ## 计划体验
 

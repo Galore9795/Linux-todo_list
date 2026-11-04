@@ -44,6 +44,18 @@ class PlatformTests(unittest.TestCase):
         with patch.object(sys, 'frozen', True, create=True):
             self.assertEqual(gui_command(), [sys.executable, 'gui'])
 
+    def test_frozen_linux_cli_launches_packaged_gui_command(self):
+        from todo_notes.__main__ import open_independent
+        with tempfile.TemporaryDirectory() as root, \
+                patch.dict(os.environ, {'TODO_NOTES_DATA_DIR': root}), \
+                patch('sys.platform', 'linux'), patch.object(sys, 'frozen', True, create=True), \
+                patch('subprocess.run') as service:
+            service.return_value.returncode = 0
+            open_independent(None)
+        command = service.call_args.args[0]
+        self.assertEqual(command[-2:], [sys.executable, 'gui'])
+        self.assertNotIn('-m', command)
+
     def test_lock_release_after_process_exit(self):
         from PyQt6.QtCore import QLockFile
         with tempfile.TemporaryDirectory() as root:
