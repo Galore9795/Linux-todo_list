@@ -119,7 +119,7 @@ Crosspet 的 Cursor 钩子配置可用 `python3 scripts/cursor-hook-config.py --
 
 从 Crosspet 右键菜单打开“桌面便签”，进入便签本。选择已有便签，填写任务名称、内容和可选的截止时间；点击“保存到桌面”，或按住纸张顶部的拖拽条，将纸片拖到桌面并松开。松手后当前便签贴到该位置，拖动过程会显示预览；窗口会记住位置。便签本里的“新建”先创建未贴出的纸片；它只在拖出或点击“保存到桌面”后显示在桌面。未贴出的纸片会保存在便签本中，可删除并从桌面便签的恢复菜单找回。可直接运行 `linux-todo-notes edit` 打开同一编辑页。
 
-桌面便签是无边框纸张，右下角露出一小块纸背，角下有柔和阴影；顶部操作栏可拖动、隐藏、置顶、收起，更多操作在菜单中。可继续在桌面直接编辑文字和清单。编辑页输入会作为草稿自动保存在本机，切换便签或重启后可恢复；保存失败会保留输入并显示提示；不同入口修改不同字段时可合并，同一字段有冲突时会显示桌面的最新内容，保留草稿供对照和继续编辑。导出的备份也包含这些草稿。
+桌面便签是无边框直角纸张，右下角保留轻微纸背细节；顶部操作栏可拖动、隐藏、置顶、收起，更多操作在菜单中。可继续在桌面直接编辑文字和清单。编辑页输入会作为草稿自动保存在本机，切换便签或重启后可恢复；保存失败会保留输入并显示提示；不同入口修改不同字段时可合并，同一字段有冲突时会显示桌面的最新内容，保留草稿供对照和继续编辑。导出的备份也包含这些草稿。
 
 自动检查：`python3 -m unittest discover -s tests -q`；隔离 GNOME/X11 操作测试：`./tests/run_nested_desktop.sh` 及 `./tests/run_nested_desktop.sh tests/manual_editor.py`；窗口可读性检查：`./tests/run_nested_desktop.sh tests/manual_dialogs.py`。编辑器测试在独立测试桌面用鼠标事件验证拖拽落点，不操作用户当前工作区。
 
@@ -130,3 +130,5 @@ Crosspet 右键实测：`./tests/run_nested_desktop.sh tests/manual_crosspet_men
 本机当前运行的便签服务已载入上述新版，Crosspet 菜单可重新打开便签本。自动对话钩子仍未启用，普通 Chat 接入和真实多显示器热插拔仍待验证。
 
 纸张参考：[墙面便签实拍](https://qz.com/894564/your-daily-to-do-list-should-fit-on-a-post-it-note-and-other-practical-productivity-tips)、[单角翘起的便签](https://depositphotos.com/photo/blank-yellow-sticky-note-white-background-top-view-617147242.html)及[纸张折角参考](https://store.oliviarodrigo.com/pages/festival)。参考纸张轮廓、折角和阴影，用程序自行绘制，未复制图片素材。浅色与深色背景验证：`./tests/run_nested_desktop.sh tests/manual_paper_surface.py`。
+
+针对部分桌面出现的额外背板，纸面现在完整覆盖窗口，保留直角并禁用窗口阴影；纸面颜色以不透明像素绘制，窗口格式保留透明通道以避免 GNOME 自动加阴影。

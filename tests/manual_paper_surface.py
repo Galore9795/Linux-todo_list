@@ -28,8 +28,10 @@ with tempfile.TemporaryDirectory() as root:
     QTest.qWait(400)
     assert note.windowFlags() & Qt.WindowType.NoDropShadowWindowHint
     image = note.grab().toImage()
-    assert image.hasAlphaChannel()
-    assert image.pixelColor(1, image.height() - 2).alpha() == 0
+    for x, y in ((1, 1), (image.width() - 2, 1), (1, image.height() - 2),
+                 (image.width() - 2, image.height() - 2)):
+        pixel = image.pixelColor(x, y)
+        assert pixel.alpha() == 255 and pixel.blue() > pixel.red(), (x, y, pixel.name(), pixel.alpha())
     for color, key in [('#f6f7f9', 'TODO_NOTES_PAPER_LIGHT_SCREENSHOT'),
                        ('#33313a', 'TODO_NOTES_PAPER_DARK_SCREENSHOT')]:
         background.setStyleSheet('background:' + color)
@@ -37,7 +39,7 @@ with tempfile.TemporaryDirectory() as root:
         if os.environ.get(key):
             app.primaryScreen().grabWindow(0, note.x() - 30, note.y() - 30,
                                            note.width() + 60, note.height() + 60).save(os.environ[key])
-    print('Transparent backing, no window shadow and single-corner paper: OK')
+    print('Opaque square-corner paper and no window shadow: OK')
     manager.timer.stop()
     manager.watcher.removePaths(manager.watcher.files())
     note.close()
